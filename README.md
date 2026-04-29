@@ -18,7 +18,9 @@ HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
 | 2     | Crypto, transport, signed protocol                 | done        |
 | 3     | UPM, package layout, mine migrated as a package    | done        |
 | 4     | Service manager (systemd-style units, supervision) | done        |
-| 5     | HTTP-RPC via VPS, sandboxed apps, TUI framework    | pending     |
+| 5.1   | HTTP-RPC via VPS message bus                       | done        |
+| 5.2   | Sandboxed apps (permissions enforced)              | pending     |
+| 5.3   | TUI framework (windows, widgets)                   | pending     |
 
 ## Network
 
@@ -129,6 +131,9 @@ Built-in commands (Phase 1):
 | `displays` | Manage attached monitors             |
 | `upm`     | Install/manage packages              |
 | `service` | Manage system services               |
+| `devices` | List devices on the message bus      |
+| `rsend`   | Send a typed message to a device     |
+| `rexec`   | Run a shell command on a remote device |
 
 ## Packages (UPM)
 

@@ -8,16 +8,18 @@ Type=simple
 User=unison
 Group=unison
 Environment=UNISON_ROOT=/srv/unison
+Environment=UNISON_STATE=/srv/unison.state
 Environment=UNISON_HTTP_PORT=9273
 Environment=UNISON_HTTPS_PORT=9274
 Environment=UNISON_CERT=/etc/unison/server.crt
 Environment=UNISON_KEY=/etc/unison/server.key
+Environment=UNISON_API_TOKEN_FILE=/etc/unison/api.token
 ExecStart=/usr/bin/python3 /usr/local/bin/unison-serve.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/srv/unison
+ReadWritePaths=/srv/unison /srv/unison.state
 ProtectHome=yes
 PrivateTmp=yes
 
