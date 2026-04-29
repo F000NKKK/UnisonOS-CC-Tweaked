@@ -23,7 +23,12 @@ local function writeFile(p, content)
 end
 
 local function parseManifest(raw)
-    local fn, err = loadstring(raw, "manifest")
+    local loader = load or loadstring
+    local fn, err = loader(raw, "manifest", "t")
+    if not fn then
+        -- some Lua envs don't accept the mode argument
+        fn, err = loader(raw, "manifest")
+    end
     if not fn then return nil, err end
     local ok, t = pcall(fn)
     if not ok or type(t) ~= "table" then return nil, "manifest is not a table" end

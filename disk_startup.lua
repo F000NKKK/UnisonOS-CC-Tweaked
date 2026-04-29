@@ -1,9 +1,9 @@
 -- /disk/startup.lua for the UnisonOS-Installer floppy.
--- Runs at every boot when this disk is in an attached drive.
--- Behavior:
---   1) If UnisonOS is not installed or its version differs from the disk's
---      manifest, run the installer and reboot.
---   2) Otherwise, do nothing — let the local /startup.lua boot UnisonOS.
+-- Logic is intentionally minimal:
+--   * If UnisonOS is already installed (boot.lua present), boot it. Updates
+--     are handled by the OS itself via os-updater, so the disk never needs
+--     to upgrade.
+--   * Otherwise run the installer from disk and reboot.
 
 local DISK_LABEL = "UnisonOS-Installer"
 
@@ -23,62 +23,27 @@ local function findDiskRoot()
     return nil
 end
 
-local DISK_ROOT = findDiskRoot()
-if not DISK_ROOT then
-    -- no installer on disk, fall through to local boot
-    return
-end
-
-local function readFile(p)
-    if not fs.exists(p) then return nil end
-    local h = fs.open(p, "r")
-    local s = h.readAll()
-    h.close()
-    return s
-end
-
-local function localVersion()
-    return readFile("/unison/.version")
-end
-
-local function diskVersion()
-    -- The disk holds a frozen manifest copy.  Read disk-side manifest if present;
-    -- otherwise fall back to the embedded installer pinning.
-    local raw = readFile(DISK_ROOT .. "/manifest.json")
-    if not raw then return nil end
-    local m = textutils.unserializeJSON(raw)
-    if type(m) ~= "table" then return nil end
-    return m.version
-end
-
-local installed = localVersion()
-local available = diskVersion()
-
-local function bootInstalledOS()
-    if fs.exists("/unison/boot.lua") then
-        print("[disk] booting UnisonOS...")
-        shell.run("/unison/boot.lua")
-    elseif fs.exists("/startup.lua") then
+if fs.exists("/unison/boot.lua") then
+    -- Already installed; let the local /startup.lua boot UnisonOS.
+    print("[disk] UnisonOS already installed, booting...")
+    if fs.exists("/startup.lua") then
         shell.run("/startup.lua")
     elseif fs.exists("/startup") then
         shell.run("/startup")
     else
-        print("[disk] no local OS to boot.")
+        shell.run("/unison/boot.lua")
     end
-end
-
-if installed and available and installed == available then
-    print("[disk] UnisonOS " .. installed .. " already installed.")
-    bootInstalledOS()
     return
 end
 
-print("[disk] UnisonOS install/upgrade required.")
-print("[disk]   installed: " .. tostring(installed))
-print("[disk]   available: " .. tostring(available))
-print("[disk] Running installer in 2s. Eject disk to cancel.")
-sleep(2)
+local DISK_ROOT = findDiskRoot()
+if not DISK_ROOT then
+    -- nothing to do — fall through to wherever the BIOS goes next
+    return
+end
 
+print("[disk] UnisonOS not installed. Running installer in 2s. Eject disk to cancel.")
+sleep(2)
 shell.run(DISK_ROOT .. "/installer.lua")
 print("[disk] Install complete. Rebooting in 3s...")
 sleep(3)
