@@ -178,13 +178,16 @@ end
 M.peekManifest = fetchManifest
 M.currentVersion = currentVersion
 
+local PENDING_MARKER = "/unison/.pending-commit"
+
 function M.applyManifest(manifest)
     if type(manifest) ~= "table" or not manifest.version then
         return false, "invalid manifest"
     end
-    log.info("os-updater", "applying " .. tostring(manifest.version))
+    log.info("os-updater", "staging " .. tostring(manifest.version))
     print("")
     print(">>> UnisonOS upgrade -> " .. manifest.version .. " <<<")
+
     local files = manifestFiles(manifest)
     print("staging " .. #files .. " file(s)...")
     local ok, perr = stage(files)
@@ -193,13 +196,23 @@ function M.applyManifest(manifest)
         if fs.exists(STAGING_DIR) then fs.delete(STAGING_DIR) end
         return false, perr
     end
-    print("removing obsolete files...")
-    deleteObsolete(files)
-    print("committing staged files...")
-    commit(files)
-    writeFile(VERSION_FILE, manifest.version)
-    log.info("os-updater", "applied " .. manifest.version)
-    print(">>> Update applied, rebooting in 5s <<<")
+
+    -- Persist the manifest into the staging dir so the boot-time committer
+    -- can read it without depending on /unison code that's about to be
+    -- replaced.
+    local mh = fs.open(STAGING_DIR .. "/manifest.json", "w")
+    mh.write(textutils.serializeJSON(manifest))
+    mh.close()
+
+    -- Drop a marker so /unison/boot.lua does the actual file replacement
+    -- on next boot — before any /unison/* module is loaded. This avoids
+    -- the running OS overwriting itself mid-flight.
+    local fh = fs.open(PENDING_MARKER, "w")
+    fh.write(manifest.version)
+    fh.close()
+
+    log.info("os-updater", "staged; rebooting to commit")
+    print(">>> Update staged. Rebooting in 5s to apply <<<")
     sleep(5)
     os.reboot()
     return true
