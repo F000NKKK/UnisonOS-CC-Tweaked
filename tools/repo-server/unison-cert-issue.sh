@@ -31,14 +31,18 @@ ACME=/root/.acme.sh/acme.sh
 "$ACME" --set-default-ca --server letsencrypt
 
 if "$ACME" --list | awk 'NR>1{print $1}' | grep -qx "$DOMAIN"; then
-    echo "[cert] renewing $DOMAIN"
-    "$ACME" --renew -d "$DOMAIN" --force --dns dns_cf || true
+    echo "[cert] $DOMAIN already issued; running cron-style renewal check"
+    # acme.sh decides whether actual renewal is due (default: <30 days left).
+    # rc=0 always when nothing to do; non-zero only on real failure during renew.
+    if ! "$ACME" --cron --home /root/.acme.sh; then
+        echo "[cert] cron renewal failed; keeping current cert" >&2
+    fi
 else
     echo "[cert] issuing $DOMAIN"
     "$ACME" --issue -d "$DOMAIN" --dns dns_cf
 fi
 
-"$ACME" --install-cert -d "$DOMAIN" \
+"$ACME" --install-cert -d "$DOMAIN" --ecc \
     --key-file       "$KEY" \
     --fullchain-file "$CERT" \
     --reloadcmd      "systemctl restart unison-server.service"
