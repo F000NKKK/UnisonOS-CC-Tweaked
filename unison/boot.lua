@@ -1,4 +1,4 @@
-local VERSION = "0.2.2"
+local VERSION = "0.2.3"
 
 local function loadConfig()
     if not fs.exists("/unison/config.lua") then
