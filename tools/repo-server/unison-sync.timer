@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically pull UnisonOS + apps from GitHub
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=2min
+AccuracySec=10s
+Unit=unison-sync.service
+
+[Install]
+WantedBy=timers.target

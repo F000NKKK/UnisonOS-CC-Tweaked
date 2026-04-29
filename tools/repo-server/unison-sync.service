@@ -1,0 +1,13 @@
+[Unit]
+Description=UnisonOS git sync (pulls latest OS + apps for the package server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=unison
+Group=unison
+WorkingDirectory=/srv/unison
+ExecStart=/usr/local/bin/unison-sync.sh
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,25 @@
+[Unit]
+Description=UnisonOS package mirror (HTTP 9273 / HTTPS 9274)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unison
+Group=unison
+Environment=UNISON_ROOT=/srv/unison
+Environment=UNISON_HTTP_PORT=9273
+Environment=UNISON_HTTPS_PORT=9274
+Environment=UNISON_CERT=/etc/unison/server.crt
+Environment=UNISON_KEY=/etc/unison/server.key
+ExecStart=/usr/bin/python3 /usr/local/bin/unison-serve.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/unison
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
