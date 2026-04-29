@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "phase": 1,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
-  "branch": "main",
-  "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/main",
+  "branch": "master",
+  "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
   "roles": {
     "common": [
       "unison/boot.lua",

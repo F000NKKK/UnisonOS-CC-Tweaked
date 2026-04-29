@@ -2,9 +2,9 @@
 -- Usage on a fresh CC:Tweaked device:
 --   pastebin run <ID>
 -- Or directly:
---   wget run https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/main/installer.lua
+--   wget run https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master/installer.lua
 
-local REPO_RAW = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/main"
+local REPO_RAW = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master"
 local MANIFEST_URL = REPO_RAW .. "/manifest.json"
 
 local function info(msg) print("[unison-install] " .. msg) end
