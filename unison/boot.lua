@@ -13,6 +13,25 @@ end
 
 local VERSION = readVersion()
 
+-- One-shot config reset migration. Runs at most once per device when this
+-- version of the OS first boots. Drops user-customised /unison/config.lua
+-- in favour of the shipped default. Auth tokens (api_token, node_key) live
+-- in /unison/state and are NOT touched.
+local function maybeResetConfig()
+    local marker = "/unison/state/.config_reset_v0_5_5"
+    if fs.exists(marker) then return end
+    if not fs.exists("/unison/config.lua.example") then return end
+    if fs.exists("/unison/config.lua") then fs.delete("/unison/config.lua") end
+    fs.copy("/unison/config.lua.example", "/unison/config.lua")
+    if not fs.exists("/unison/state") then fs.makeDir("/unison/state") end
+    local h = fs.open(marker, "w")
+    h.write(tostring(os.epoch("utc")))
+    h.close()
+    print("[boot] config.lua reset to defaults (v0.5.5 migration)")
+end
+
+maybeResetConfig()
+
 local function loadConfig()
     if not fs.exists("/unison/config.lua") then
         printError("[boot] /unison/config.lua not found. Copy config.lua.example.")

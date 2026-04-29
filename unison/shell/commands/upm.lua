@@ -22,21 +22,40 @@ local function help()
     print("  remove <name>         uninstall a package")
     print("  update [<name>]       update an app package (one or all)")
     print("  upgrade [-y]          check for and apply an OS upgrade")
+    print("  upgrade -d [-y]       refresh the attached installer disk")
     print("  sources               show configured sources")
 end
 
 local function cmdUpgrade(args)
-    local yes = false
+    local yes, diskMode = false, false
     for _, a in ipairs(args) do
-        if a == "-y" or a == "--yes" then yes = true end
+        if a == "-y" or a == "--yes" then yes = true
+        elseif a == "-d" or a == "--disk" then diskMode = true end
     end
+
+    if diskMode then
+        local du = dofile("/unison/services/disk_updater.lua")
+        if not yes then
+            write("refresh installer disk now? (yes/no) > ")
+            local ans = read()
+            if ans ~= "yes" and ans ~= "y" and ans ~= "YES" and ans ~= "Y" then
+                print("aborted."); return
+            end
+        end
+        local n = du.runOnce()
+        if not n or n == 0 then
+            print("no changes (or no labelled disk found).")
+        else
+            print("refreshed " .. n .. " file(s).")
+        end
+        return
+    end
+
     local osu = dofile("/unison/services/os_updater.lua")
     print("checking upstream manifest...")
-    -- Fetch manifest first so we can show the user what we'd do.
     local manifest, err = osu.peekManifest and osu.peekManifest()
     if not manifest then
         if err then printError("upm: " .. tostring(err)); return end
-        -- old api fallback: just call checkOnce verbose
         osu.checkOnce(true)
         return
     end
@@ -51,8 +70,7 @@ local function cmdUpgrade(args)
         write("apply upgrade? (yes/no) > ")
         local ans = read()
         if ans ~= "yes" and ans ~= "y" and ans ~= "YES" and ans ~= "Y" then
-            print("aborted.")
-            return
+            print("aborted."); return
         end
     end
     osu.applyManifest(manifest)

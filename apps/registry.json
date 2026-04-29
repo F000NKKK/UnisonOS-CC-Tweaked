@@ -1,4 +1,5 @@
 {
+{
   "schema": 1,
   "updated_at": "2026-04-29",
   "packages": {
@@ -9,6 +10,14 @@
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
+    },
+    "sysmon": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "TUI system monitor (services, devices, uptime)",
+      "author": "F000NKKK",
+      "roles": ["any"],
+      "path": "packages/sysmon"
     }
   }
 }
