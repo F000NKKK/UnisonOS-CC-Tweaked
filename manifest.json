@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "phase": 5,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -56,7 +56,8 @@
       "unison/shell/commands/rsend.lua",
       "unison/shell/commands/rexec.lua",
       "unison/shell/commands/echo.lua",
-      "unison/shell/commands/apitoken.lua"
+      "unison/shell/commands/apitoken.lua",
+      "unison/shell/commands/hardreset.lua"
     ],
     "master": [],
     "turtle": [],
