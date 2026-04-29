@@ -38,6 +38,18 @@ function M.start(cfg)
     unison.config = cfg
 
     log.info("kernel", "boot " .. version .. " role=" .. nodeRole .. " name=" .. nodeName)
+
+    local disp_ok, disp = pcall(dofile, "/unison/services/display.lua")
+    if disp_ok and disp then
+        local started_ok, derr = pcall(disp.start, cfg)
+        if not started_ok then
+            log.warn("kernel", "display.start failed: " .. tostring(derr))
+        else
+            unison.display = disp
+            scheduler.spawn(disp.watcherLoop, "display-watch")
+        end
+    end
+
     banner(nodeName, nodeRole, version)
 
     local netd_ok, netd = pcall(dofile, "/unison/net/netd.lua")

@@ -23,6 +23,11 @@ return {
         nonce_cache = 1000,
     },
 
+    displays = {
+        mirror_all = true,
+        monitors = {},
+    },
+
     create_bridge = {
         stress_in = nil,
         storage_inventories = {},
