@@ -1,7 +1,7 @@
 {
   "name": "UnisonOS",
-  "version": "0.2.5",
-  "phase": 2,
+  "version": "0.3.0",
+  "phase": 3,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
@@ -22,6 +22,9 @@
       "unison/net/enroll.lua",
       "unison/net/router.lua",
       "unison/net/netd.lua",
+      "unison/pm/sources.lua",
+      "unison/pm/registry.lua",
+      "unison/pm/installer.lua",
       "unison/services/disk_updater.lua",
       "unison/services/os_updater.lua",
       "unison/services/display.lua",
@@ -36,13 +39,10 @@
       "unison/shell/commands/netstat.lua",
       "unison/shell/commands/diskupdate.lua",
       "unison/shell/commands/update.lua",
-      "unison/shell/commands/displays.lua"
+      "unison/shell/commands/displays.lua",
+      "unison/shell/commands/upm.lua"
     ],
-    "master": [
-      "unison/shell/commands/enroll.lua",
-      "unison/shell/commands/nodes.lua",
-      "unison/shell/commands/revoke.lua"
-    ],
+    "master": [],
     "turtle": [],
     "computer": [],
     "pocket": [],

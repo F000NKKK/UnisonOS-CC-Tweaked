@@ -8,18 +8,17 @@ ender-modems (long range, e.g. turtles) and wireless modems (local nodes).
 
 ## Status
 
-**Phase 2 — Network & enrollment.** Devices discover a master node over rednet,
-run an authenticated enrollment flow (HMAC-SHA256, replay protection,
-admin-confirmed code), and exchange signed packets. Self-updating installer
-floppy is supported.
+**Phase 3 — Unison Packet Manager (UPM).** OS now ships only OS primitives
+plus UPM. Apps (including `mine`) are fetched from a configurable list of
+HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
 
 | Phase | Scope                                              | Status      |
 |-------|----------------------------------------------------|-------------|
 | 1     | Installer, kernel, IPC, log, shell                 | done        |
-| 2     | Crypto, transport, signed protocol, enrollment     | done        |
-| 3     | Package manager (GitHub), `mine` app migration     | pending     |
-| 4     | Metrics + monitor dashboard                        | pending     |
-| 5     | Create-bridge (redstone/inventory) + RPC           | pending     |
+| 2     | Crypto, transport, signed protocol                 | done        |
+| 3     | UPM, package layout, mine migrated as a package    | done        |
+| 4     | App-side HTTP RPC + dashboards                     | pending     |
+| 5     | Create-bridge (redstone/inventory)                 | pending     |
 
 ## Network
 
@@ -125,10 +124,39 @@ Built-in commands (Phase 1):
 | `clear`   | Clear the screen                     |
 | `reboot`  | Reboot the device                    |
 | `netstat` | Modem/transport state, neighbors     |
+| `update`  | Check / apply OS update              |
 | `diskupdate` | Refresh attached installer disk now |
-| `enroll`  | Approve a pending node (master only) |
-| `nodes`   | List enrolled nodes (master only)    |
-| `revoke`  | Revoke a node by id (master only)    |
+| `displays` | Manage attached monitors             |
+| `upm`     | Install/manage packages              |
+
+## Packages (UPM)
+
+UnisonOS ships with `upm`, a tiny HTTP-based package manager. Sources are
+defined per device in `/unison/config.lua`:
+
+```lua
+pm_sources = {
+    "http://upm.hush-vp.ru:9273",
+    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
+},
+```
+
+Each source serves the registry at `<base>/apps/registry.json` and packages
+at `<base>/apps/packages/<name>/<version>/...`. Sources are tried in order;
+the first that responds wins.
+
+| Command                  | Effect                                |
+|--------------------------|---------------------------------------|
+| `upm search <q>`         | search the registry                   |
+| `upm info <name>`        | show package details                  |
+| `upm install <name>[@v]` | download into `/unison/apps/<name>/`  |
+| `upm list`               | installed packages                    |
+| `upm remove <name>`      | uninstall                             |
+| `upm update [<name>]`    | refresh one or all                    |
+| `upm sources`            | show configured sources               |
+
+Run an installed app with `run <name> [args...]`. Apps live in
+`/unison/apps/<name>/main.lua` (or whatever `entry` is in their manifest).
 
 ## Repo layout
 

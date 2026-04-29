@@ -5,11 +5,24 @@ local M = {
 
 local APPS_DIR = "/unison/apps"
 
+local function resolveApp(name)
+    local dir = APPS_DIR .. "/" .. name
+    if fs.exists(dir .. "/manifest.lua") then
+        local fn = loadfile(dir .. "/manifest.lua")
+        if fn then
+            local ok, m = pcall(fn)
+            if ok and type(m) == "table" and m.entry then
+                return dir .. "/" .. m.entry
+            end
+        end
+    end
+    if fs.exists(dir .. "/main.lua") then return dir .. "/main.lua" end
+    return nil
+end
+
 local function resolve(target)
     if fs.exists(target) and not fs.isDir(target) then return target end
-    local appMain = APPS_DIR .. "/" .. target .. "/main.lua"
-    if fs.exists(appMain) then return appMain end
-    return nil
+    return resolveApp(target)
 end
 
 function M.run(ctx, args)
@@ -28,18 +41,17 @@ function M.run(ctx, args)
     end
 
     local sched = unison.kernel.scheduler
-    local pid = sched.spawn(function(...)
+    local pid = sched.spawn(function()
         local fn, err = loadfile(path, "t", _ENV)
         if not fn then
             printError("load error: " .. tostring(err))
             return
         end
-        local ok, e = pcall(fn, ...)
+        local ok, e = pcall(fn, table.unpack(rest))
         if not ok then printError("runtime error: " .. tostring(e)) end
     end, target)
 
     print("started " .. target .. " as pid " .. pid)
-    unison.kernel.ipc.send(pid, { args = rest })
 end
 
 return M

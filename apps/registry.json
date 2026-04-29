@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "updated_at": "2026-04-29",
+  "packages": {
+    "mine": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Vertical mining shaft for turtles",
+      "author": "F000NKKK",
+      "roles": ["turtle"],
+      "path": "packages/mine"
+    }
+  }
+}

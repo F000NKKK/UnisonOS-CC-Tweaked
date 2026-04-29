@@ -4,6 +4,7 @@ local M = {
 }
 
 local function svc()
+    if unison and unison.display then return unison.display end
     local ok, mod = pcall(dofile, "/unison/services/display.lua")
     if not ok then return nil, mod end
     return mod
