@@ -1,7 +1,7 @@
 -- sysmon — small TUI dashboard built on the unison.ui framework.
 
-local wm      = dofile("/unison/ui/wm.lua")
-local widgets = dofile("/unison/ui/widgets.lua")
+local wm      = unison.ui.wm
+local widgets = unison.ui.widgets
 
 local function fmtUptime(s)
     if s < 60 then return s .. "s" end
@@ -27,7 +27,6 @@ local function readDevices()
     return out
 end
 
--- ---- header --------------------------------------------------------------
 local headerWin = {
     x = 1, y = 1, w = 0, h = 3,
     title = "UnisonOS",
@@ -35,16 +34,15 @@ local headerWin = {
     render = function(self, buf)
         local node = unison and unison.node or "?"
         local role = unison and unison.role or "?"
-        local ver  = (UNISON and UNISON.version) or "?"
-        local upS  = math.floor((os.epoch("utc") - (UNISON.boot_time or 0)) / 1000)
+        local ver  = unison and unison.version or "?"
+        local upS  = math.floor((os.epoch("utc") - 0) / 1000)
         buf:text(self.x + 2, self.y + 1,
-            string.format("%s   role=%-8s  v%s   up %s",
-                node, role, ver, fmtUptime(upS)),
+            string.format("%s   role=%-8s  v%s",
+                node, role, ver),
             colors.white, colors.black)
     end,
 }
 
--- ---- services pane -------------------------------------------------------
 local svcList = widgets.list({}, {
     fg = colors.white, bg = colors.black,
     selFg = colors.black, selBg = colors.cyan,
@@ -69,7 +67,6 @@ local servicesWin = {
     end,
 }
 
--- ---- devices pane --------------------------------------------------------
 local devList = widgets.list({}, {
     fg = colors.white, bg = colors.black,
     selFg = colors.black, selBg = colors.green,
@@ -101,19 +98,16 @@ local devicesWin = {
     end,
 }
 
--- ---- footer --------------------------------------------------------------
 local footerWin = {
     x = 1, y = 0, w = 0, h = 1,
     title = nil,
     focusable = false,
     render = function(self, buf)
-        buf.t.setCursorPos(self.x, self.y)
         buf:text(self.x, self.y, " TAB switch  Q quit  UP/DOWN navigate ",
             colors.black, colors.lightGray)
     end,
 }
 
--- ---- layout --------------------------------------------------------------
 local function layout()
     local w, h = term.getSize()
     headerWin.w = w

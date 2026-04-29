@@ -110,6 +110,20 @@ local function modemPeripheral()
     }
 end
 
+local function lazy(loader)
+    local cached
+    return setmetatable({}, {
+        __index = function(_, k)
+            if not cached then cached = loader() end
+            local v = cached[k]
+            if type(v) == "function" then
+                return function(...) return v(...) end
+            end
+            return v
+        end,
+    })
+end
+
 local function appUnison()
     local u = {
         role = unison and unison.role,
@@ -118,6 +132,16 @@ local function appUnison()
         version = (UNISON and UNISON.version),
         log = unison and unison.kernel and unison.kernel.log,
         ipc = unison and unison.kernel and unison.kernel.ipc,
+    }
+    -- Read-only handles to kernel services, useful for app dashboards.
+    u.kernel = {
+        services = unison and unison.kernel and unison.kernel.services,
+    }
+    -- UI framework, lazy-loaded so apps that don't draw don't pay the cost.
+    u.ui = {
+        buffer  = lazy(function() return dofile("/unison/ui/buffer.lua") end),
+        wm      = lazy(function() return dofile("/unison/ui/wm.lua") end),
+        widgets = lazy(function() return dofile("/unison/ui/widgets.lua") end),
     }
     return u
 end
