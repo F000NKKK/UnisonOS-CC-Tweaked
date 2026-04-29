@@ -19,8 +19,10 @@ HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
 | 3     | UPM, package layout, mine migrated as a package    | done        |
 | 4     | Service manager (systemd-style units, supervision) | done        |
 | 5.1   | HTTP-RPC via VPS message bus                       | done        |
-| 5.2   | Sandboxed apps (permissions enforced)              | pending     |
+| 5.2   | Sandboxed apps (permissions enforced)              | done        |
 | 5.3   | TUI framework (windows, widgets)                   | pending     |
+| 5.4   | Cron / scheduled tasks                             | pending     |
+| 5.5   | Login + accounts                                   | pending     |
 
 ## Network
 
@@ -163,6 +165,33 @@ the first that responds wins.
 
 Run an installed app with `run <name> [args...]`. Apps live in
 `/unison/apps/<name>/main.lua` (or whatever `entry` is in their manifest).
+
+### Sandbox / permissions
+
+Packages run inside a sandbox `_ENV` built from their manifest's
+`permissions` list. Without explicit permission, an app only sees the pure-
+Lua stdlib, `sleep`, a safe subset of `term`, and `unison.{log, role, node,
+id, version, permissions}`. Recognised permissions:
+
+| Permission   | Grants                                              |
+|--------------|-----------------------------------------------------|
+| `turtle`     | the turtle global (movement, mining, blocks)        |
+| `fuel`       | alias for `turtle`                                  |
+| `inventory`  | alias for `turtle`                                  |
+| `peripheral` | full `peripheral.*`                                 |
+| `modem`      | `peripheral.*`, restricted to modems                |
+| `redstone`   | `rs` and `redstone` globals                         |
+| `gps`        | `gps`                                               |
+| `fs`         | full filesystem (`fs.*`)                            |
+| `fs.read`    | read-only filesystem                                |
+| `http`       | `http.*` (raw HTTP)                                 |
+| `rpc`        | `unison.rpc` (the message bus client)               |
+| `shell`      | `shell.run`, `shell.openTab`                        |
+| `term`       | full `term.*`                                       |
+| `all`        | escape hatch — full host environment                |
+
+Ad-hoc Lua files passed to `run /path/to/foo.lua` keep full access (the user
+typed them). Sandbox only kicks in for packaged apps.
 
 ## Repo layout
 

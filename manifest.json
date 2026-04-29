@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "phase": 5,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -15,6 +15,7 @@
       "unison/kernel/log.lua",
       "unison/kernel/role.lua",
       "unison/kernel/services.lua",
+      "unison/kernel/sandbox.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",
       "unison/net/transport.lua",

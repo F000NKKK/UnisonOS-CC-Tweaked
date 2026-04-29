@@ -37,6 +37,7 @@ local STATES = {
     INACTIVE = "inactive",
     STARTING = "starting",
     RUNNING  = "running",
+    ACTIVE   = "active",     -- pre_start succeeded, no main loop
     EXITED   = "exited",
     FAILED   = "failed",
     STOPPED  = "stopped",
@@ -147,7 +148,11 @@ function M.start(name, cfg)
     if unit.main then
         spawnSupervised(unit, cfg)
     else
-        s.status = STATES.EXITED
+        -- Oneshot units (no main loop) that completed pre_start are considered
+        -- active — they typically registered handlers or spawned background
+        -- work elsewhere via the kernel scheduler.
+        s.status = STATES.ACTIVE
+        s.started_at = os.epoch("utc")
     end
     log.info("services", "started " .. name)
     return true
