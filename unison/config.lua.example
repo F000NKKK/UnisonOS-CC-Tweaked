@@ -1,0 +1,31 @@
+return {
+    is_master = false,
+
+    node_name = nil,
+
+    log_level = "INFO",
+    log_to_master = true,
+    log_max_files = 5,
+    log_max_size = 16384,
+
+    auto_update = true,
+
+    network = {
+        protocol = "unison/1",
+        heartbeat_interval = 5,
+        ack_timeout = 2,
+        ack_retries = 3,
+    },
+
+    master = {
+        secret = "CHANGE_ME_BEFORE_FIRST_BOOT",
+        nonce_window = 60,
+        nonce_cache = 1000,
+    },
+
+    create_bridge = {
+        stress_in = nil,
+        storage_inventories = {},
+        redstone_outputs = {},
+    },
+}

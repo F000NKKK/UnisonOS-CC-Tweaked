@@ -1,0 +1,33 @@
+{
+  "name": "UnisonOS",
+  "version": "0.1.0",
+  "phase": 1,
+  "repo": "F000NKKK/UnisonOS-CC-Tweaked",
+  "branch": "main",
+  "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/main",
+  "roles": {
+    "common": [
+      "unison/boot.lua",
+      "unison/config.lua.example",
+      "unison/kernel/init.lua",
+      "unison/kernel/scheduler.lua",
+      "unison/kernel/ipc.lua",
+      "unison/kernel/log.lua",
+      "unison/kernel/role.lua",
+      "unison/shell/shell.lua",
+      "unison/shell/commands/help.lua",
+      "unison/shell/commands/run.lua",
+      "unison/shell/commands/ps.lua",
+      "unison/shell/commands/kill.lua",
+      "unison/shell/commands/clear.lua",
+      "unison/shell/commands/reboot.lua",
+      "unison/shell/commands/version.lua"
+    ],
+    "master": [],
+    "turtle": [],
+    "computer": [],
+    "pocket": [],
+    "monitor-host": []
+  },
+  "entrypoint": "unison/boot.lua"
+}
