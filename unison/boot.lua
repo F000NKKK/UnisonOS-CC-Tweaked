@@ -1,4 +1,17 @@
-local VERSION = "0.5.0"
+local VERSION_FILE = "/unison/.version"
+local VERSION_FALLBACK = "0.0.0"
+
+local function readVersion()
+    if not fs.exists(VERSION_FILE) then return VERSION_FALLBACK end
+    local h = fs.open(VERSION_FILE, "r")
+    local s = h.readAll()
+    h.close()
+    s = (s or ""):gsub("%s+$", "")
+    if s == "" then return VERSION_FALLBACK end
+    return s
+end
+
+local VERSION = readVersion()
 
 local function loadConfig()
     if not fs.exists("/unison/config.lua") then
