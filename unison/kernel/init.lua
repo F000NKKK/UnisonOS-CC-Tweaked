@@ -40,6 +40,22 @@ function M.start(cfg)
     log.info("kernel", "boot " .. version .. " role=" .. nodeRole .. " name=" .. nodeName)
     banner(nodeName, nodeRole, version)
 
+    local netd_ok, netd = pcall(dofile, "/unison/net/netd.lua")
+    if netd_ok and netd then
+        unison.netd = netd
+        local started_ok, err = pcall(netd.start)
+        if not started_ok then log.error("kernel", "netd failed: " .. tostring(err)) end
+    else
+        log.warn("kernel", "net stack not available: " .. tostring(netd))
+    end
+
+    local du_ok, du = pcall(dofile, "/unison/services/disk_updater.lua")
+    if du_ok and du then
+        scheduler.spawn(du.loop, "disk-updater")
+    else
+        log.warn("kernel", "disk-updater not available: " .. tostring(du))
+    end
+
     scheduler.spawn(function()
         local shell_main = dofile("/unison/shell/shell.lua")
         shell_main()

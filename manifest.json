@@ -1,7 +1,7 @@
 {
   "name": "UnisonOS",
-  "version": "0.1.0",
-  "phase": 1,
+  "version": "0.2.0",
+  "phase": 2,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
@@ -14,6 +14,15 @@
       "unison/kernel/ipc.lua",
       "unison/kernel/log.lua",
       "unison/kernel/role.lua",
+      "unison/crypto/sha256.lua",
+      "unison/crypto/hmac.lua",
+      "unison/net/transport.lua",
+      "unison/net/protocol.lua",
+      "unison/net/auth.lua",
+      "unison/net/enroll.lua",
+      "unison/net/router.lua",
+      "unison/net/netd.lua",
+      "unison/services/disk_updater.lua",
       "unison/shell/shell.lua",
       "unison/shell/commands/help.lua",
       "unison/shell/commands/run.lua",
@@ -21,9 +30,15 @@
       "unison/shell/commands/kill.lua",
       "unison/shell/commands/clear.lua",
       "unison/shell/commands/reboot.lua",
-      "unison/shell/commands/version.lua"
+      "unison/shell/commands/version.lua",
+      "unison/shell/commands/netstat.lua",
+      "unison/shell/commands/diskupdate.lua"
     ],
-    "master": [],
+    "master": [
+      "unison/shell/commands/enroll.lua",
+      "unison/shell/commands/nodes.lua",
+      "unison/shell/commands/revoke.lua"
+    ],
     "turtle": [],
     "computer": [],
     "pocket": [],

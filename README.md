@@ -8,17 +8,66 @@ ender-modems (long range, e.g. turtles) and wireless modems (local nodes).
 
 ## Status
 
-**Phase 1 — Bootstrap & kernel.** A device can boot UnisonOS, detect its
-role, run a cooperative scheduler, and provide a built-in shell. No network,
-package manager, or metrics yet — those land in later phases.
+**Phase 2 — Network & enrollment.** Devices discover a master node over rednet,
+run an authenticated enrollment flow (HMAC-SHA256, replay protection,
+admin-confirmed code), and exchange signed packets. Self-updating installer
+floppy is supported.
 
 | Phase | Scope                                              | Status      |
 |-------|----------------------------------------------------|-------------|
-| 1     | Installer, kernel, IPC, log, shell                 | in progress |
-| 2     | Crypto, transport, signed protocol, enrollment     | pending     |
+| 1     | Installer, kernel, IPC, log, shell                 | done        |
+| 2     | Crypto, transport, signed protocol, enrollment     | done        |
 | 3     | Package manager (GitHub), `mine` app migration     | pending     |
 | 4     | Metrics + monitor dashboard                        | pending     |
 | 5     | Create-bridge (redstone/inventory) + RPC           | pending     |
+
+## Network
+
+UnisonOS runs a daemon (`netd`) at boot. It opens every attached modem
+(wireless and ender) on channel 4717 and exchanges packets in the
+following format:
+
+```
+{ v=1, id, from, to, ts, nonce, type, payload, sig }
+```
+
+Signatures are HMAC-SHA256 over a canonical serialization of every field
+except `sig`. Replays are rejected by a per-sender nonce cache and a
+configurable timestamp window (default ±60s).
+
+### Enrollment flow
+
+1. A fresh non-master node generates an enrollment code (8 chars) and shows
+   it on screen at boot. It broadcasts an unsigned `ENROLL_REQ` carrying a
+   hashed copy of the code every 3 seconds.
+2. On master, the admin reads the code from the node's screen and runs
+   `enroll <code>`. Master derives `node_key = HMAC(master_secret, node_id)`
+   and sends an `ENROLL_ACK` signed with `bootstrap_key = HMAC(code, "...")`.
+   The ACK carries `node_key` XOR-streamed against the bootstrap key.
+3. The node verifies the ACK signature and decrypts `node_key`, then saves
+   it locally. From then on every packet is signed with `node_key`.
+
+`master.secret` (in `/unison/config.lua`) must be set on master before
+the first boot.
+
+## Installer disk (auto-updating)
+
+UnisonOS can keep a labelled installer floppy in sync automatically.
+
+1. On any UnisonOS device, attach a Disk Drive (any side) and insert a
+   floppy. Set its label to `UnisonOS-Installer` via:
+
+   ```
+   label set <side> UnisonOS-Installer
+   ```
+
+2. From an existing UnisonOS shell run `diskupdate`, or wait up to 60s for
+   the background `disk-updater` service to detect it. The disk is
+   populated with `installer.lua`, `manifest.json`, and a smart
+   `startup.lua`.
+3. The smart `startup.lua` checks the locally installed version against the
+   disk's manifest and **only runs the installer when versions differ**, so
+   leaving the disk in the drive no longer causes a reinstall loop.
 
 ## Install
 
@@ -75,6 +124,11 @@ Built-in commands (Phase 1):
 | `kill`    | Terminate a process by PID           |
 | `clear`   | Clear the screen                     |
 | `reboot`  | Reboot the device                    |
+| `netstat` | Modem/transport state, neighbors     |
+| `diskupdate` | Refresh attached installer disk now |
+| `enroll`  | Approve a pending node (master only) |
+| `nodes`   | List enrolled nodes (master only)    |
+| `revoke`  | Revoke a node by id (master only)    |
 
 ## Repo layout
 
