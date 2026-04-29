@@ -56,6 +56,13 @@ function M.start(cfg)
         log.warn("kernel", "disk-updater not available: " .. tostring(du))
     end
 
+    local osu_ok, osu = pcall(dofile, "/unison/services/os_updater.lua")
+    if osu_ok and osu then
+        scheduler.spawn(osu.loop, "os-updater")
+    else
+        log.warn("kernel", "os-updater not available: " .. tostring(osu))
+    end
+
     scheduler.spawn(function()
         local shell_main = dofile("/unison/shell/shell.lua")
         shell_main()

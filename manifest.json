@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "phase": 2,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -23,6 +23,7 @@
       "unison/net/router.lua",
       "unison/net/netd.lua",
       "unison/services/disk_updater.lua",
+      "unison/services/os_updater.lua",
       "unison/shell/shell.lua",
       "unison/shell/commands/help.lua",
       "unison/shell/commands/run.lua",
@@ -32,7 +33,8 @@
       "unison/shell/commands/reboot.lua",
       "unison/shell/commands/version.lua",
       "unison/shell/commands/netstat.lua",
-      "unison/shell/commands/diskupdate.lua"
+      "unison/shell/commands/diskupdate.lua",
+      "unison/shell/commands/update.lua"
     ],
     "master": [
       "unison/shell/commands/enroll.lua",

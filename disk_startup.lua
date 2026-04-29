@@ -54,8 +54,22 @@ end
 local installed = localVersion()
 local available = diskVersion()
 
+local function bootInstalledOS()
+    if fs.exists("/unison/boot.lua") then
+        print("[disk] booting UnisonOS...")
+        shell.run("/unison/boot.lua")
+    elseif fs.exists("/startup.lua") then
+        shell.run("/startup.lua")
+    elseif fs.exists("/startup") then
+        shell.run("/startup")
+    else
+        print("[disk] no local OS to boot.")
+    end
+end
+
 if installed and available and installed == available then
-    print("[disk] UnisonOS " .. installed .. " already installed, skipping installer.")
+    print("[disk] UnisonOS " .. installed .. " already installed.")
+    bootInstalledOS()
     return
 end
 
