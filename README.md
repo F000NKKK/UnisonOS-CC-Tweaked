@@ -17,8 +17,8 @@ HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
 | 1     | Installer, kernel, IPC, log, shell                 | done        |
 | 2     | Crypto, transport, signed protocol                 | done        |
 | 3     | UPM, package layout, mine migrated as a package    | done        |
-| 4     | App-side HTTP RPC + dashboards                     | pending     |
-| 5     | Create-bridge (redstone/inventory)                 | pending     |
+| 4     | Service manager (systemd-style units, supervision) | done        |
+| 5     | HTTP-RPC via VPS, sandboxed apps, TUI framework    | pending     |
 
 ## Network
 
@@ -128,6 +128,7 @@ Built-in commands (Phase 1):
 | `diskupdate` | Refresh attached installer disk now |
 | `displays` | Manage attached monitors             |
 | `upm`     | Install/manage packages              |
+| `service` | Manage system services               |
 
 ## Packages (UPM)
 
