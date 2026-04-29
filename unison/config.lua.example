@@ -8,7 +8,9 @@ return {
     log_max_files = 5,
     log_max_size = 16384,
 
-    auto_update = true,
+    -- OS updates require explicit confirmation by default.
+    -- Set to true to let os-updater apply new versions without asking.
+    auto_update = false,
 
     network = {
         protocol = "unison/1",

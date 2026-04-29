@@ -42,9 +42,20 @@ if not DISK_ROOT then
     return
 end
 
-print("[disk] UnisonOS not installed. Running installer in 2s. Eject disk to cancel.")
-sleep(2)
+print("[disk] UnisonOS is not installed on this device.")
+print("[disk] Run installer from " .. DISK_ROOT .. "?  (yes / no)")
+write("> ")
+local answer = read()
+if answer ~= "yes" and answer ~= "y" and answer ~= "YES" and answer ~= "Y" then
+    print("[disk] aborted; falling through to local boot.")
+    return
+end
+
 shell.run(DISK_ROOT .. "/installer.lua")
-print("[disk] Install complete. Rebooting in 3s...")
-sleep(3)
-os.reboot()
+print("[disk] Install complete. Reboot now? (yes / no)")
+write("> ")
+local rb = read()
+if rb == "yes" or rb == "y" or rb == "YES" or rb == "Y" then
+    sleep(1)
+    os.reboot()
+end

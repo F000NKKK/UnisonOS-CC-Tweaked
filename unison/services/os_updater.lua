@@ -175,6 +175,36 @@ local function commit(files)
     if fs.exists(STAGING_DIR) then fs.delete(STAGING_DIR) end
 end
 
+M.peekManifest = fetchManifest
+M.currentVersion = currentVersion
+
+function M.applyManifest(manifest)
+    if type(manifest) ~= "table" or not manifest.version then
+        return false, "invalid manifest"
+    end
+    log.info("os-updater", "applying " .. tostring(manifest.version))
+    print("")
+    print(">>> UnisonOS upgrade -> " .. manifest.version .. " <<<")
+    local files = manifestFiles(manifest)
+    print("staging " .. #files .. " file(s)...")
+    local ok, perr = stage(files)
+    if not ok then
+        log.warn("os-updater", "staging failed: " .. tostring(perr))
+        if fs.exists(STAGING_DIR) then fs.delete(STAGING_DIR) end
+        return false, perr
+    end
+    print("removing obsolete files...")
+    deleteObsolete(files)
+    print("committing staged files...")
+    commit(files)
+    writeFile(VERSION_FILE, manifest.version)
+    log.info("os-updater", "applied " .. manifest.version)
+    print(">>> Update applied, rebooting in 5s <<<")
+    sleep(5)
+    os.reboot()
+    return true
+end
+
 function M.checkOnce(verbose)
     local function vprint(s) if verbose then print(s) end end
     vprint("sources: " .. table.concat(activeSources(), ", "))
@@ -194,31 +224,7 @@ function M.checkOnce(verbose)
         return false, "up to date"
     end
 
-    log.info("os-updater", "update " .. tostring(installed) .. " -> " .. manifest.version)
-    print("")
-    print(">>> UnisonOS update " .. tostring(installed) .. " -> " .. manifest.version .. " <<<")
-
-    local files = manifestFiles(manifest)
-    print("staging " .. #files .. " file(s)...")
-    local ok, perr = stage(files)
-    if not ok then
-        log.warn("os-updater", "staging failed: " .. tostring(perr))
-        if fs.exists(STAGING_DIR) then fs.delete(STAGING_DIR) end
-        return false, perr
-    end
-
-    print("removing obsolete files...")
-    deleteObsolete(files)
-
-    print("committing staged files...")
-    commit(files)
-
-    writeFile(VERSION_FILE, manifest.version)
-    log.info("os-updater", "applied " .. manifest.version)
-    print(">>> Update applied, rebooting in 5s <<<")
-    sleep(5)
-    os.reboot()
-    return true
+    return M.applyManifest(manifest)
 end
 
 function M.loop()

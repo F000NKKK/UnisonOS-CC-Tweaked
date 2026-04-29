@@ -20,8 +20,42 @@ local function help()
     print("  install <name>[@<v>]  install or replace a package")
     print("  list                  list installed packages")
     print("  remove <name>         uninstall a package")
-    print("  update [<name>]       update one (or all if omitted)")
+    print("  update [<name>]       update an app package (one or all)")
+    print("  upgrade [-y]          check for and apply an OS upgrade")
     print("  sources               show configured sources")
+end
+
+local function cmdUpgrade(args)
+    local yes = false
+    for _, a in ipairs(args) do
+        if a == "-y" or a == "--yes" then yes = true end
+    end
+    local osu = dofile("/unison/services/os_updater.lua")
+    print("checking upstream manifest...")
+    -- Fetch manifest first so we can show the user what we'd do.
+    local manifest, err = osu.peekManifest and osu.peekManifest()
+    if not manifest then
+        if err then printError("upm: " .. tostring(err)); return end
+        -- old api fallback: just call checkOnce verbose
+        osu.checkOnce(true)
+        return
+    end
+    local installed = osu.currentVersion and osu.currentVersion()
+    print("  installed: " .. tostring(installed))
+    print("  available: " .. tostring(manifest.version))
+    if installed == manifest.version then
+        print("already on the latest version.")
+        return
+    end
+    if not yes then
+        write("apply upgrade? (yes/no) > ")
+        local ans = read()
+        if ans ~= "yes" and ans ~= "y" and ans ~= "YES" and ans ~= "Y" then
+            print("aborted.")
+            return
+        end
+    end
+    osu.applyManifest(manifest)
 end
 
 local function cmdSearch(args)
@@ -131,6 +165,7 @@ function M.run(ctx, args)
     elseif sub == "list" or sub == "ls" then cmdList()
     elseif sub == "remove" or sub == "rm" then cmdRemove(rest)
     elseif sub == "update"  then cmdUpdate(rest)
+    elseif sub == "upgrade" then cmdUpgrade(rest)
     elseif sub == "sources" then cmdSources()
     elseif sub == "help"    then help()
     else printError("unknown subcommand: " .. sub); help() end

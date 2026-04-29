@@ -23,10 +23,15 @@ local function tokenize(line)
     return toks
 end
 
-local function prompt()
+local function shortCwd(cwd)
+    if cwd == "/" then return "/" end
+    return cwd
+end
+
+local function prompt(ctx)
     local node = (unison and unison.node) or "node"
     if term.isColor and term.isColor() then term.setTextColor(colors.lightBlue) end
-    write("[" .. node .. "]")
+    write("[" .. node .. " " .. shortCwd(ctx.cwd) .. "]")
     if term.setTextColor then term.setTextColor(colors.white) end
     write("$ ")
 end
@@ -37,13 +42,14 @@ return function()
         commands = cmds,
         running = true,
         history = {},
+        cwd = "/",
     }
 
     print("Type 'help' for available commands.")
     print("")
 
     while ctx.running do
-        prompt()
+        prompt(ctx)
         local line = read(nil, ctx.history)
         if line and line ~= "" then
             ctx.history[#ctx.history + 1] = line
