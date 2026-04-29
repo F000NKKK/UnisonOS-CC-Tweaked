@@ -6,9 +6,9 @@ local M = {
 function M.run(ctx, args)
     local osu = dofile("/unison/services/os_updater.lua")
     print("checking upstream manifest...")
-    local applied = osu.checkOnce()
+    local applied, why = osu.checkOnce(true)
     if not applied then
-        print("no update applied (already current or fetch failed).")
+        print("no update applied: " .. tostring(why))
     end
 end
 

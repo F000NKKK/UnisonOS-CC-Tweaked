@@ -18,8 +18,13 @@ local FILES = {
 
 local function fetch(url)
     if not http then return nil, "http disabled" end
-    local r = http.get(url)
-    if not r then return nil, "http error" end
+    local sep = url:find("?", 1, true) and "&" or "?"
+    local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
+    local headers = { ["Cache-Control"] = "no-cache", ["Pragma"] = "no-cache" }
+    local r, err = http.get(bust, headers)
+    if not r then return nil, "http error: " .. tostring(err) end
+    local code = r.getResponseCode and r.getResponseCode() or 200
+    if code >= 400 then r.close(); return nil, "http " .. code end
     local body = r.readAll()
     r.close()
     return body
