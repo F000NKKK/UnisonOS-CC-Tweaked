@@ -35,31 +35,48 @@ HTTP:  http://1.2.3.4:9273/manifest.json
 HTTPS: https://1.2.3.4:9274/manifest.json
 ```
 
-## Bringing your own cert
+## Real HTTPS via Cloudflare DNS-01 (Let's Encrypt)
 
-If you have a real Let's Encrypt / DNS-validated cert, put it at
-`/etc/unison/server.crt` and `/etc/unison/server.key` (`chown root:unison`,
-`chmod 0640`) and `systemctl restart unison-server`. The handler reloads on
-start.
+CC:Tweaked validates HTTPS against Java's truststore — Cloudflare Origin CA
+won't work, but **Let's Encrypt does**. The kit ships an `acme.sh` flow that
+solves the DNS-01 challenge through your Cloudflare API token, so you don't
+need to expose port 80 or use Cloudflare's proxy:
+
+1. In the Cloudflare dashboard create an API token with:
+   - **Permissions:** `Zone : DNS : Edit` and `Zone : Zone : Read`.
+   - **Zone resources:** include the zone for your domain.
+2. On the VPS:
+   ```bash
+   sudo install -d -m 0750 -o root -g unison /etc/unison
+   echo "<your-token>" | sudo tee /etc/unison/cloudflare.token >/dev/null
+   sudo chmod 600 /etc/unison/cloudflare.token
+   sudo UNISON_DOMAIN=upm.hush-vp.ru /usr/local/bin/unison-cert-issue.sh
+   ```
+3. The certificate is installed to `/etc/unison/server.{crt,key}` and the
+   server is restarted. A weekly `unison-cert.timer` keeps it renewed.
+
+`setup.sh` will run this automatically if the token file exists at install
+time.
+
+If you'd rather drop your own cert in, place it at
+`/etc/unison/server.crt` / `server.key` (`chown root:unison`, `chmod 0640`)
+and `systemctl restart unison-server`.
 
 ## Pointing UnisonOS at your server
 
-In `/unison/config.lua` on each device:
+UnisonOS already defaults to `http://upm.hush-vp.ru:9273` with GitHub raw
+as a fallback. To override, add to `/unison/config.lua`:
 
 ```lua
-auto_update = true,
-
-pm = {
-    repos = {
-        { name = "self",     url = "http://1.2.3.4:9273" },
-        { name = "official", url = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master" },
-    },
+pm_sources = {
+    "https://upm.hush-vp.ru:9274",                                                       -- after Let's Encrypt
+    "http://upm.hush-vp.ru:9273",
+    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
 },
 ```
 
-CC:Tweaked validates HTTPS certs against Java's truststore, so for now
-**use the HTTP port (9273) inside CC** unless you've installed a real cert.
-The HTTPS port is fine for browsers and external tooling.
+The OS-updater, disk-updater, and installer try each source in order and
+use the first that responds.
 
 ## Files in this directory
 
@@ -71,6 +88,9 @@ The HTTPS port is fine for browsers and external tooling.
 | `unison-sync.service`      | `/etc/systemd/system/unison-sync.service`       |
 | `unison-sync.timer`        | `/etc/systemd/system/unison-sync.timer`         |
 | `setup.sh`                 | run once via `curl | bash` as root              |
+| `unison-cert-issue.sh`     | `/usr/local/bin/unison-cert-issue.sh`           |
+| `unison-cert.service`      | `/etc/systemd/system/unison-cert.service`       |
+| `unison-cert.timer`        | `/etc/systemd/system/unison-cert.timer`         |
 
 ## Useful commands
 

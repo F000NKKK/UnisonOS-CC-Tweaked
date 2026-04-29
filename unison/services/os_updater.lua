@@ -8,11 +8,20 @@ local role_lib = dofile("/unison/kernel/role.lua")
 local M = {}
 
 local CHECK_INTERVAL = 120
-local RAW_BASE = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master"
-local MANIFEST_URL = RAW_BASE .. "/manifest.json"
+local SOURCES = {
+    "http://upm.hush-vp.ru:9273",
+    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
+}
 local VERSION_FILE = "/unison/.version"
 
-local function fetch(url)
+local function activeSources()
+    if unison and unison.config and type(unison.config.pm_sources) == "table" then
+        return unison.config.pm_sources
+    end
+    return SOURCES
+end
+
+local function fetchUrl(url)
     if not http then return nil, "http disabled" end
     local sep = url:find("?", 1, true) and "&" or "?"
     local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
@@ -30,6 +39,17 @@ local function fetch(url)
     local body = r.readAll()
     r.close()
     return body
+end
+
+local function fetchRel(rel)
+    local lastErr
+    for _, base in ipairs(activeSources()) do
+        local body, err = fetchUrl(base .. "/" .. rel)
+        if body then return body, base end
+        lastErr = err
+        log.debug("os-updater", "source " .. base .. " failed for " .. rel .. ": " .. tostring(err))
+    end
+    return nil, lastErr or "all sources failed"
 end
 
 local function readFile(p)
@@ -55,10 +75,11 @@ local function currentVersion()
 end
 
 local function fetchManifest()
-    local raw, err = fetch(MANIFEST_URL)
-    if not raw then return nil, err end
+    local raw, srcOrErr = fetchRel("manifest.json")
+    if not raw then return nil, srcOrErr end
     local m = textutils.unserializeJSON(raw)
     if type(m) ~= "table" then return nil, "bad manifest" end
+    m._source = srcOrErr
     return m
 end
 
@@ -71,7 +92,7 @@ local function downloadAll(manifest)
     local failed = 0
     for i, rel in ipairs(files) do
         write(string.format("  [%2d/%2d] %s ... ", i, #files, rel))
-        local body, err = fetch(RAW_BASE .. "/" .. rel)
+        local body, err = fetchRel(rel)
         if body then
             if writeFile("/" .. rel, body) then
                 print("ok")
@@ -91,7 +112,7 @@ end
 
 function M.checkOnce(verbose)
     local function vprint(s) if verbose then print(s) end end
-    vprint("manifest: " .. MANIFEST_URL)
+    vprint("sources: " .. table.concat(activeSources(), ", "))
     local manifest, err = fetchManifest()
     if not manifest then
         log.debug("os-updater", "manifest fetch failed: " .. tostring(err))

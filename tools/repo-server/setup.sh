@@ -16,14 +16,15 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-DOMAIN="${UNISON_DOMAIN:-unison.local}"
+DOMAIN="${UNISON_DOMAIN:-upm.hush-vp.ru}"
+TOKEN_FILE="${UNISON_TOKEN_FILE:-/etc/unison/cloudflare.token}"
 REPO_RAW="${UNISON_REPO_RAW:-https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master/tools/repo-server}"
 
 echo "[1/6] installing system packages..."
 apt-get update -y
 apt-get install -y python3 git curl openssl ca-certificates
 
-echo "[2/6] creating user, dirs and self-signed cert..."
+echo "[2/6] creating user and dirs..."
 id -u unison >/dev/null 2>&1 || useradd --system --home /srv/unison --shell /usr/sbin/nologin unison
 install -d -o unison -g unison -m 0755 /srv/unison
 install -d -o root   -g unison -m 0750 /etc/unison
@@ -36,18 +37,24 @@ if [ ! -f /etc/unison/server.crt ] || [ ! -f /etc/unison/server.key ]; then
         -addext "subjectAltName=DNS:${DOMAIN}" >/dev/null 2>&1
     chown root:unison /etc/unison/server.{crt,key}
     chmod 0640 /etc/unison/server.{crt,key}
-    echo "  -> generated self-signed cert for CN=${DOMAIN}"
+    echo "  -> bootstrap self-signed cert generated; replace with Let's Encrypt below"
 else
     echo "  -> reusing existing cert at /etc/unison/server.crt"
 fi
 
 echo "[3/6] downloading server scripts..."
-curl -fsSL "$REPO_RAW/serve.py"               -o /usr/local/bin/unison-serve.py
-curl -fsSL "$REPO_RAW/unison-sync.sh"         -o /usr/local/bin/unison-sync.sh
-curl -fsSL "$REPO_RAW/unison-server.service"  -o /etc/systemd/system/unison-server.service
-curl -fsSL "$REPO_RAW/unison-sync.service"    -o /etc/systemd/system/unison-sync.service
-curl -fsSL "$REPO_RAW/unison-sync.timer"      -o /etc/systemd/system/unison-sync.timer
-chmod +x /usr/local/bin/unison-serve.py /usr/local/bin/unison-sync.sh
+curl -fsSL "$REPO_RAW/serve.py"                -o /usr/local/bin/unison-serve.py
+curl -fsSL "$REPO_RAW/unison-sync.sh"          -o /usr/local/bin/unison-sync.sh
+curl -fsSL "$REPO_RAW/unison-cert-issue.sh"    -o /usr/local/bin/unison-cert-issue.sh
+curl -fsSL "$REPO_RAW/unison-server.service"   -o /etc/systemd/system/unison-server.service
+curl -fsSL "$REPO_RAW/unison-sync.service"     -o /etc/systemd/system/unison-sync.service
+curl -fsSL "$REPO_RAW/unison-sync.timer"       -o /etc/systemd/system/unison-sync.timer
+curl -fsSL "$REPO_RAW/unison-cert.service"     -o /etc/systemd/system/unison-cert.service
+curl -fsSL "$REPO_RAW/unison-cert.timer"       -o /etc/systemd/system/unison-cert.timer
+chmod +x /usr/local/bin/unison-serve.py /usr/local/bin/unison-sync.sh /usr/local/bin/unison-cert-issue.sh
+
+# patch the cert service with the actual domain
+sed -i "s|^Environment=UNISON_DOMAIN=.*$|Environment=UNISON_DOMAIN=${DOMAIN}|" /etc/systemd/system/unison-cert.service
 
 echo "[4/6] opening ports in ufw (if installed)..."
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
@@ -59,6 +66,23 @@ echo "[5/6] enabling services..."
 systemctl daemon-reload
 systemctl enable --now unison-sync.timer
 systemctl enable --now unison-server.service
+systemctl enable unison-cert.timer
+
+# Issue Let's Encrypt cert if a Cloudflare API token is present
+if [ -f "$TOKEN_FILE" ]; then
+    echo "  -> Cloudflare token found, issuing real cert..."
+    UNISON_DOMAIN="$DOMAIN" UNISON_TOKEN_FILE="$TOKEN_FILE" /usr/local/bin/unison-cert-issue.sh \
+        || echo "  -> cert issue failed; HTTPS will use the bootstrap self-signed cert until you fix it"
+    systemctl start unison-cert.timer
+else
+    cat <<EOF
+  -> no Cloudflare token at $TOKEN_FILE
+     to enable real HTTPS:
+        echo "<your-cf-token>" > $TOKEN_FILE
+        chmod 600 $TOKEN_FILE
+        UNISON_DOMAIN=$DOMAIN unison-cert-issue.sh
+EOF
+fi
 
 echo "[6/6] running first sync..."
 sudo -u unison /usr/local/bin/unison-sync.sh || {

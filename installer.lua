@@ -4,8 +4,31 @@
 -- Or directly:
 --   wget run https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master/installer.lua
 
-local REPO_RAW = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master"
-local MANIFEST_URL = REPO_RAW .. "/manifest.json"
+local SOURCES = {
+    "http://upm.hush-vp.ru:9273",
+    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
+}
+
+local function fetchUrl(url)
+    local sep = url:find("?", 1, true) and "&" or "?"
+    local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
+    local headers = { ["Cache-Control"] = "no-cache", ["Pragma"] = "no-cache" }
+    local r = http.get(bust, headers)
+    if not r then return nil end
+    local code = r.getResponseCode and r.getResponseCode() or 200
+    if code >= 400 then r.close(); return nil end
+    local body = r.readAll()
+    r.close()
+    return body
+end
+
+local function fetchRel(rel)
+    for _, base in ipairs(SOURCES) do
+        local body = fetchUrl(base .. "/" .. rel)
+        if body then return body, base end
+    end
+    return nil
+end
 
 local function info(msg) print("[unison-install] " .. msg) end
 local function err(msg) printError("[unison-install] " .. msg) end
@@ -16,13 +39,12 @@ if not http then
 end
 
 info("Fetching manifest...")
-local res = http.get(MANIFEST_URL)
-if not res then
-    err("Failed to fetch manifest from " .. MANIFEST_URL)
+local raw, source = fetchRel("manifest.json")
+if not raw then
+    err("Failed to fetch manifest from any of: " .. table.concat(SOURCES, ", "))
     return
 end
-local raw = res.readAll()
-res.close()
+info("source: " .. source)
 
 local ok, manifest = pcall(textutils.unserializeJSON, raw)
 if not ok or type(manifest) ~= "table" then
@@ -53,11 +75,8 @@ local function ensureDir(path)
 end
 
 local function download(rel)
-    local url = REPO_RAW .. "/" .. rel
-    local resp = http.get(url)
-    if not resp then return false, "http error" end
-    local body = resp.readAll()
-    resp.close()
+    local body = fetchRel(rel)
+    if not body then return false, "all sources failed" end
     local target = "/" .. rel
     ensureDir(target)
     local h = fs.open(target, "w")

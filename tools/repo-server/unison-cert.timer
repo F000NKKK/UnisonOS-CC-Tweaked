@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly renewal check for the UnisonOS Let's Encrypt cert
+
+[Timer]
+OnCalendar=Mon 03:30
+RandomizedDelaySec=2h
+Persistent=true
+Unit=unison-cert.service
+
+[Install]
+WantedBy=timers.target

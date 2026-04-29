@@ -8,7 +8,17 @@ local M = {}
 
 local DISK_LABEL = "UnisonOS-Installer"
 local CHECK_INTERVAL = 60
-local RAW_BASE = "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master"
+local SOURCES = {
+    "http://upm.hush-vp.ru:9273",
+    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
+}
+
+local function activeSources()
+    if unison and unison.config and type(unison.config.pm_sources) == "table" then
+        return unison.config.pm_sources
+    end
+    return SOURCES
+end
 
 local FILES = {
     { remote = "installer.lua",    on_disk = "installer.lua" },
@@ -16,7 +26,7 @@ local FILES = {
     { remote = "disk_startup.lua", on_disk = "startup.lua"   },
 }
 
-local function fetch(url)
+local function fetchUrl(url)
     if not http then return nil, "http disabled" end
     local sep = url:find("?", 1, true) and "&" or "?"
     local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
@@ -28,6 +38,15 @@ local function fetch(url)
     local body = r.readAll()
     r.close()
     return body
+end
+
+local function fetch(rel)
+    for _, base in ipairs(activeSources()) do
+        local body, err = fetchUrl(base .. "/" .. rel)
+        if body then return body end
+        log.debug("disk-updater", "source " .. base .. " failed: " .. tostring(err))
+    end
+    return nil, "all sources failed"
 end
 
 local function readFile(p)
@@ -65,7 +84,7 @@ end
 local function refreshDisk(disk)
     local changed = 0
     for _, f in ipairs(FILES) do
-        local body, err = fetch(RAW_BASE .. "/" .. f.remote)
+        local body, err = fetch(f.remote)
         if not body then
             log.warn("disk-updater", "fetch " .. f.remote .. " failed: " .. tostring(err))
             return false, err

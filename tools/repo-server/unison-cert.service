@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew UnisonOS TLS cert via Cloudflare DNS-01
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=UNISON_DOMAIN=upm.hush-vp.ru
+Environment=UNISON_TOKEN_FILE=/etc/unison/cloudflare.token
+ExecStart=/usr/local/bin/unison-cert-issue.sh
+StandardOutput=journal
+StandardError=journal
