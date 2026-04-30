@@ -215,18 +215,20 @@ class WSHub:
                 self.queues.pop(device_id, None)
 
     async def _serve(self, host, ports, cert, key):
-        # imported lazily so the server still runs even if the websockets
-        # package isn't installed (we just won't have WS).
         import websockets
 
         servers = []
         servers.append(await websockets.serve(self._handler, host, ports[0]))
         print(f"[unison] WS    :{ports[0]} -> /ws", flush=True)
         if ports[1] is not None and cert and key and os.path.isfile(cert):
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile=cert, keyfile=key)
-            servers.append(await websockets.serve(self._handler, host, ports[1], ssl=ctx))
-            print(f"[unison] WSS   :{ports[1]} -> /ws", flush=True)
+            try:
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ctx.load_cert_chain(certfile=cert, keyfile=key)
+                servers.append(await websockets.serve(
+                    self._handler, host, ports[1], ssl=ctx))
+                print(f"[unison] WSS   :{ports[1]} -> /ws", flush=True)
+            except Exception as exc:
+                print(f"[unison] WSS disabled: cert load failed ({exc})", flush=True)
         await asyncio.Future()  # run forever
 
     def start(self, host, ws_port, wss_port, cert, key):
@@ -392,9 +394,13 @@ def _serve_plain(root, store, token, port):
 
 
 def _serve_tls(root, store, token, port, cert, key):
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=cert, keyfile=key)
+    except Exception as exc:
+        print(f"[unison] HTTPS disabled: cert load failed ({exc})", flush=True)
+        return
     srv = ThreadingHTTPServer(("0.0.0.0", port), _make_handler(root, store, token))
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     print(f"[unison] HTTPS :{port} -> {root}", flush=True)
     srv.serve_forever()
