@@ -12,6 +12,7 @@ local handlers = {}
 local POLL_INTERVAL = 3
 local HEARTBEAT_INTERVAL = 20
 local WS_RECONNECT_SEC = 5
+local GPS_STATE_FILE = "/unison/state/gpsnet.lua"
 
 local activeWs = nil
 local handlerSeq = 0
@@ -29,6 +30,15 @@ local function iRound(n)
     n = tonumber(n) or 0
     if n >= 0 then return math.floor(n + 0.5) end
     return math.ceil(n - 0.5)
+end
+
+local function loadGpsnetState()
+    if not fs.exists(GPS_STATE_FILE) then return nil end
+    local fn = loadfile(GPS_STATE_FILE)
+    if not fn then return nil end
+    local ok, t = pcall(fn)
+    if not ok or type(t) ~= "table" then return nil end
+    return t
 end
 
 local function listHas(list, value)
@@ -139,10 +149,26 @@ local function collectMetrics()
         for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
         metrics.inventory_used = used
     end
-    if gps then
+    local state = loadGpsnetState() or {}
+    local mode = state.mode == "host" and "host" or "auto"
+    metrics.gpsnet = { mode = mode }
+    metrics.capabilities.gps_http = true
+
+    local hosted = mode == "host" and state.host
+    if hosted and hosted.x and hosted.y and hosted.z then
+        metrics.position = {
+            x = iRound(hosted.x),
+            y = iRound(hosted.y),
+            z = iRound(hosted.z),
+        }
+        metrics.position_source = "host"
+        metrics.gpsnet.host = true
+        metrics.capabilities.gps_http_host = true
+    elseif gps then
         local x, y, z = gps.locate(0.1)
         if x then
             metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
+            metrics.position_source = "gps"
         end
     end
     return metrics

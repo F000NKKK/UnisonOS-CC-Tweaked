@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "phase": 9,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -28,6 +28,7 @@
       "unison/lib/cli.lua",
       "unison/lib/app.lua",
       "unison/lib/fmt.lua",
+      "unison/lib/gps.lua",
       "unison/lib/init.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",
@@ -72,6 +73,7 @@
       "unison/shell/commands/upm.lua",
       "unison/shell/commands/service.lua",
       "unison/shell/commands/devices.lua",
+      "unison/shell/commands/gpsnet.lua",
       "unison/shell/commands/rsend.lua",
       "unison/shell/commands/rexec.lua",
       "unison/shell/commands/cron.lua",

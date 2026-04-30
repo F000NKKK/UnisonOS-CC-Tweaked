@@ -5,7 +5,7 @@ Runs on Computers, Turtles, Pocket Computers, and drives Monitors. Devices
 talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS.
 
-## Status (current: 0.8.0)
+## Status (current: 0.9.5)
 
 | Phase   | Scope                                                   | Status   |
 |---------|---------------------------------------------------------|----------|
@@ -118,11 +118,23 @@ Prompt shows the node name and current working directory:
 | `service`     | Manage system services (`list/status/start/stop/restart`) |
 | `cron`        | Manage scheduled tasks (`list/run/reload`)        |
 | `devices`     | List devices on the VPS message bus               |
+| `gpsnet`      | HTTP-GPS (`status/up/host/auto/locate/list/pulse`) |
 | `rsend <id> <type> [k=v]...` | Send a JSON message to a device    |
 | `rexec <id> <cmd...>` | Run a shell command on a remote device    |
 
 Installed packages also become callable as bare commands: `sysmon`, `pilot 0`,
 `mine 64` — `run` is the explicit form for both packages and ad-hoc files.
+
+`gpsnet` adds HTTP-GPS over the Unison bus:
+
+```
+gpsnet up                # register now + send heartbeat right away
+gpsnet host here         # detect current position and publish as fixed host
+gpsnet host 120 70 -34   # publish a manual fixed host position
+gpsnet auto              # switch back to local gps.locate()
+gpsnet locate 17         # resolve device #17 position from bus metrics
+gpsnet list              # list all devices with known position
+```
 
 ### Multi-monitor
 
@@ -205,6 +217,7 @@ required):
 | `unison.lib.json`           | Safe `encode/decode`                       |
 | `unison.lib.semver`         | `parse/compare/gte/lte/eq`                 |
 | `unison.lib.path`           | `resolve(ctx, raw)` / `absolute(raw)`      |
+| `unison.lib.gps`            | `locate/devices/distance` via local GPS + HTTP bus |
 | `unison.permissions`        | Read-only set of granted permissions       |
 | `dofile("/unison/...")`     | Restricted to `/unison/*` paths            |
 
