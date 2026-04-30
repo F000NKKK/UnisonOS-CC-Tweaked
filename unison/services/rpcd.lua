@@ -14,6 +14,71 @@ local HEARTBEAT_INTERVAL = 20
 local WS_RECONNECT_SEC = 5
 
 local activeWs = nil
+local handlerSeq = 0
+
+local function senderId(env, msg)
+    return tostring(
+        (env and env.msg and env.msg.from)
+        or (env and env.from)
+        or (msg and msg.from)
+        or ""
+    )
+end
+
+local function iRound(n)
+    n = tonumber(n) or 0
+    if n >= 0 then return math.floor(n + 0.5) end
+    return math.ceil(n - 0.5)
+end
+
+local function listHas(list, value)
+    if type(list) ~= "table" then return false end
+    local s = tostring(value or "")
+    for _, v in ipairs(list) do
+        local x = tostring(v)
+        if x == "*" or x == s then return true end
+    end
+    return false
+end
+
+local function aclAllowed(msgType, fromId)
+    local cfg = unison and unison.config and unison.config.rpc_acl
+    if type(cfg) ~= "table" then return true end
+    local rule = cfg[msgType] or cfg["*"]
+    if rule == nil then return true end
+    if rule == true then return true end
+    if rule == false then return false end
+    local from = tostring(fromId or "")
+    if type(rule) == "string" then
+        return rule == "*" or rule == from
+    end
+    if type(rule) == "table" then
+        if listHas(rule.deny, from) then return false end
+        if rule.allow ~= nil then return listHas(rule.allow, from) end
+        if #rule > 0 then return listHas(rule, from) end
+        if rule.default ~= nil then return not not rule.default end
+    end
+    return true
+end
+
+local function runHandler(fn, msg, envelope)
+    local ok, err = pcall(fn, msg, envelope)
+    if not ok then log.warn("rpcd", "handler error: " .. tostring(err)) end
+end
+
+local function denyReplyType(msgType)
+    if msgType == "exec" then return "exec_reply" end
+    if msgType == "pilot" then return "pilot_reply" end
+    if msgType == "craft_order" or msgType == "recipe_list" or msgType == "recipe_add" then
+        return "craft_reply"
+    end
+    if msgType:match("^mine_") then return "mine_reply" end
+    if msgType:match("^farm_") then return "farm_reply" end
+    if msgType:match("^scanner_") then return "scanner_reply" end
+    if msgType:match("^storage_") then return "storage_reply" end
+    if msgType:match("^atlas_") then return "atlas_reply" end
+    return nil
+end
 
 function M.on(msgType, fn)
     handlers[msgType] = handlers[msgType] or {}
@@ -22,26 +87,63 @@ end
 
 local function dispatch(envelope)
     local msg = envelope.msg or {}
-    local list = handlers[msg.type or "*"] or handlers["*"]
-    if not list then
-        log.debug("rpcd", "no handler for type=" .. tostring(msg.type))
+    local msgType = tostring(msg.type or "*")
+    local from = senderId(envelope, msg)
+    if not aclAllowed(msgType, from) then
+        log.warn("rpcd", "acl denied type=" .. tostring(msgType) .. " from=" .. from)
+        local replyType = denyReplyType(msgType)
+        if replyType and unison and unison.rpc and unison.rpc.reply then
+            unison.rpc.reply(envelope, {
+                type = replyType,
+                ok = false,
+                err = "acl denied",
+            })
+        end
         return
     end
+
+    local list = handlers[msgType] or handlers["*"]
+    if not list then
+        log.debug("rpcd", "no handler for type=" .. tostring(msgType))
+        return
+    end
+    local sched = unison and unison.kernel and unison.kernel.scheduler
     for _, fn in ipairs(list) do
-        local ok, err = pcall(fn, msg, envelope)
-        if not ok then log.warn("rpcd", "handler error: " .. tostring(err)) end
+        if sched and sched.spawn then
+            handlerSeq = handlerSeq + 1
+            local workerName = string.format("rpc-%s-%d", tostring(msgType), handlerSeq)
+            sched.spawn(function() runHandler(fn, msg, envelope) end, workerName, {
+                priority = -2, group = "system",
+            })
+        else
+            runHandler(fn, msg, envelope)
+        end
     end
 end
 
 local function collectMetrics()
     local metrics = {
         uptime = math.floor((os.epoch("utc") - (UNISON.boot_time or 0)) / 1000),
+        role = unison and unison.role or nil,
+    }
+    metrics.capabilities = {
+        rpc = true,
+        turtle = turtle and true or false,
+        gps = gps and true or false,
+        modem = peripheral and peripheral.find and (peripheral.find("modem") ~= nil) or false,
+        monitor = peripheral and peripheral.find and (peripheral.find("monitor") ~= nil) or false,
     }
     if turtle then
         metrics.fuel = turtle.getFuelLevel()
         local used = 0
         for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
         metrics.inventory_used = used
+    end
+    if gps then
+        local x, y, z = gps.locate(0.1)
+        if x then
+            metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
+        end
     end
     return metrics
 end
@@ -140,6 +242,11 @@ function M.run()
         if env and env.id then out.in_reply_to = env.id end
         for k, v in pairs(payload or {}) do out[k] = v end
         return client.send(from, out)
+    end
+    -- ACL helper for apps. Usage:
+    --   if not unison.rpc.allowed("mine_order", env) then ... end
+    client.allowed = function(msgType, env)
+        return aclAllowed(msgType, senderId(env))
     end
     -- Replace send with WS-aware variant; original HTTP send still
     -- accessible via client.httpSend for fallback debugging.

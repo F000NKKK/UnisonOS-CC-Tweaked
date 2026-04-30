@@ -3,9 +3,9 @@
   "updated_at": "2026-04-30",
   "packages": {
     "mine": {
-      "latest": "1.3.0",
-      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0"],
-      "description": "Advanced turtle miner: shaft, coordinate sectors, ore targeting, RPC service mode",
+      "latest": "1.4.0",
+      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0", "1.4.0"],
+      "description": "Advanced turtle miner: shaft/sectors/ore mode, cancellable jobs, RPC service mode",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"

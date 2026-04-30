@@ -19,6 +19,20 @@ return {
         ack_retries = 3,
     },
 
+    -- Bus ACL (optional): whitelist who can send a given RPC type
+    -- to this device. Keys are message types; values can be:
+    --   true/false
+    --   { "1", "7" }                       -- allowlist
+    --   { allow = { "1" }, deny = { "9" } } -- deny wins
+    --   "*"                                -- allow anyone
+    -- Example:
+    -- rpc_acl = {
+    --     exec = { "1" },          -- only device #1 can rexec here
+    --     mine_order = { "1", "2" },
+    --     mine_cancel = { "1", "2" },
+    -- },
+    rpc_acl = {},
+
     master = {
         secret = "CHANGE_ME_BEFORE_FIRST_BOOT",
         nonce_window = 60,

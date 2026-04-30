@@ -26,14 +26,16 @@ Request types:
 - `storage_query` — `{ action="list"|"find", pattern? }` → reply `{ ok, items? | slots? }`
 - `storage_pull`  — `{ pattern, count?, target? }` → reply `{ ok, moved }`
 
-### `mine` — resource extraction (1.3.0+)
+### `mine` — resource extraction (1.4.0+)
 - `mine_order`  — supports mode-aware jobs:
   - shaft: `{ mode="shaft", depth?, ore?/ores?/kind?, vein_limit? }`
   - ore tunnel: `{ mode="ore", ore?/ores?/kind?, length?, vein_limit? }`
   - sector (relative): `{ mode="sector", x1,y1,z1,x2,y2,z2, ore?/ores?/kind?, vein_limit? }`
   - sector (absolute GPS): same as sector + `{ absolute=true }`
+  - cancel shortcut: `{ action="cancel", reason? }` (same as `mine_cancel`)
   reply: `{ ok, mode, dug, moves, ores?, ts, err? }`
 - `mine_status` — `{}` → reply `{ ok, busy, fuel, inventory_used, position, jobs_total, blocks_total, ... }`
+- `mine_cancel` — `{ reason? }` → reply `{ ok, cancelled, job_id?, reason?, err? }`
 
 ### `farm` — crop maintenance (1.0.0+)
 - `farm_harvest` — `{ length? }` → reply `{ ok, harvested, replanted }`

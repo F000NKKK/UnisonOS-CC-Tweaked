@@ -22,7 +22,7 @@ self-hostable VPS.
 | 7.A     | Browser-based web console at `/dashboard/`              | done     |
 | 8.0     | `unison/lib` extracted; UniAPI exposed via `unison.lib` | done     |
 | 8.E     | More built-in apps (storage / farm / autocraft / …)     | pending  |
-| 8.D     | ACL on bus commands (per-device exec/pilot whitelist)   | pending  |
+| 8.D     | ACL on bus commands (per-device exec/pilot whitelist)   | done     |
 | 8.F     | Create-bridge (redstone + inventory peripherals)        | pending  |
 
 ## Quick install
@@ -71,6 +71,13 @@ return {
     network = {
         protocol = "unison/1",
         heartbeat_interval = 5,
+    },
+
+    rpc_acl = {
+        exec = { "1" },                  -- only device #1 may run rexec here
+        pilot = { "1", "2" },            -- only trusted controllers may pilot
+        mine_order = { "1", "2" },       -- optional per-app controls
+        mine_cancel = { "1", "2" },
     },
 
     master = {
@@ -240,9 +247,10 @@ A restricted `dofile` is available regardless: it can `dofile` any
 
 Available in `apps/registry.json` (default registry):
 
-* **`mine`** (1.3.0) — advanced turtle miner: shaft mode, coordinate
+* **`mine`** (1.4.0) — advanced turtle miner: shaft mode, coordinate
   sectors (`mine sector ...`), GPS absolute sectors (`mine sector-abs ...`),
-  ore-targeted tunneling (`mine ore ...`), and bus listener mode (`mine listen`).
+  ore-targeted tunneling (`mine ore ...`), cancellable jobs (`mine cancel` /
+  `mine_cancel`), and bus listener mode (`mine listen`).
 * **`sysmon`** (1.0.2) — TUI dashboard with three panes: services,
   registered devices on the bus, and a live tail of `/unison/logs/current.log`.
 * **`pilot`** (1.0.4) — remote-control a turtle from any computer over the
