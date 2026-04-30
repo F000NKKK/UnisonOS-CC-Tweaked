@@ -247,6 +247,10 @@ Available in `apps/registry.json` (default registry):
   bus (forward/back/up/down, dig, place, refuel, sel, info, …). Persists
   per-target command history under `/unison/state/pilot-history-<id>.json`
   via `unison.lib.fs.writeJson`.
+* **`storage`** (1.0.0) — wire every chest / barrel / Item Vault on a
+  wired-modem network into one item pool. REPL with `list / find / pull /
+  push / chests / buffer`, plus `storage_query` and `storage_pull` RPC
+  handlers so other devices can ask "give me 64 coal" over the bus.
 
 ## Services
 

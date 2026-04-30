@@ -25,6 +25,14 @@
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/pilot"
+    },
+    "storage": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Aggregate inventories on a wired-modem network as one storage pool",
+      "author": "F000NKKK",
+      "roles": ["any"],
+      "path": "packages/storage"
     }
   }
 }
