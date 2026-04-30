@@ -5,7 +5,7 @@ Runs on Computers, Turtles, Pocket Computers, and drives Monitors. Devices
 talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS.
 
-## Status (current: 0.7.x)
+## Status (current: 0.8.0)
 
 | Phase   | Scope                                                   | Status   |
 |---------|---------------------------------------------------------|----------|
@@ -19,7 +19,11 @@ self-hostable VPS.
 | 6.0     | OS / packages decoupled (`min_platform`)                | done     |
 | 6.1     | Cron / scheduled tasks                                  | done     |
 | 6.2     | WebSocket transport (real-time bus, polling fallback)   | done     |
-| 7.x     | Login + accounts, central state backup                  | pending  |
+| 7.A     | Browser-based web console at `/dashboard/`              | done     |
+| 8.0     | `unison/lib` extracted; UniAPI exposed via `unison.lib` | done     |
+| 8.E     | More built-in apps (storage / farm / autocraft / …)     | pending  |
+| 8.D     | ACL on bus commands (per-device exec/pilot whitelist)   | pending  |
+| 8.F     | Create-bridge (redstone + inventory peripherals)        | pending  |
 
 ## Quick install
 
@@ -30,15 +34,23 @@ wget run http://upm.hush-vp.ru:9273/installer.lua
 reboot
 ```
 
-(or `pastebin run hmQKeNia` if you keep the installer there).
+(`pastebin run hmQKeNia` is also pinned as a fallback.)
 
 The installer fetches `manifest.json` from the configured sources, picks
 the file set for the device's role (turtle / pocket / computer), drops
 everything into `/unison/`, copies `config.lua.example` to `config.lua`,
 and writes `/startup.lua`. Reboot to enter UnisonOS.
 
-After first boot edit `/unison/config.lua` (typically: `is_master`,
-`master.secret`, optional `pm_sources`), then `reboot`.
+After first boot edit `/unison/config.lua` (`pm_sources`, optional auth)
+then `reboot`. To enable the message bus:
+
+```
+apitoken set <bearer-token-from-VPS>
+service restart rpcd
+```
+
+Verify with `devices` (should show every node that registered) and the
+web console at `http://<vps>:9273/dashboard/`.
 
 ## Configuration cheat sheet
 
@@ -376,11 +388,14 @@ disk_startup.lua         smart /disk/startup.lua deployed to install floppies
 manifest.json            OS file list and role mapping
 apps/
   registry.json          package catalogue
-  packages/<name>/<v>/   per-version files
+  packages/<name>/<v>/   per-version files (mine, sysmon, pilot)
+dashboard/
+  index.html             single-page web console (served at /dashboard/)
 unison/
   boot.lua               entry point + two-phase upgrade committer
   config.lua.example     config template
   kernel/                init, scheduler, ipc, log, role, services, sandbox
+  lib/                   UniAPI: fs, http, json, semver, path
   crypto/                sha256, hmac
   net/                   transport, protocol, auth, enroll, router, netd
   pm/                    UPM internals (sources, registry, installer)
@@ -391,7 +406,7 @@ unison/
   ui/                    TUI buffer / window manager / widgets
   shell/                 REPL and built-in commands
 tools/
-  repo-server/           VPS-side server kit
+  repo-server/           VPS-side server kit (HTTP/HTTPS/WS/WSS + sync)
 ```
 
 ## License & contact
