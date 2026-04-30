@@ -72,7 +72,10 @@ function M.info(name)
     return { registry = entry, manifest = m, source = src }
 end
 
-function M.install(name, version)
+local function installInternal(name, version, seen)
+    seen = seen or {}
+    if seen[name] then return true, "(already in dep set)" end
+    seen[name] = true
     local reg, err = M.fetchRegistry()
     if not reg then return false, "registry: " .. tostring(err) end
     local entry = reg.packages and reg.packages[name]
@@ -82,6 +85,20 @@ function M.install(name, version)
     if not manifestRaw then return false, "manifest: " .. tostring(src) end
     local m, perr = parseManifest(manifestRaw)
     if not m then return false, "manifest: " .. tostring(perr) end
+
+    -- Resolve declared dependencies first.
+    if m.requires then
+        for _, dep in ipairs(m.requires) do
+            local depName, depVer = dep:match("^([^@]+)@(.+)$")
+            if not depName then depName = dep end
+            local already = registry.get(depName)
+            if not already then
+                log.info("upm", "installing dep " .. depName .. " (required by " .. name .. ")")
+                local ok, derr = installInternal(depName, depVer, seen)
+                if not ok then return false, "dep " .. depName .. ": " .. tostring(derr) end
+            end
+        end
+    end
 
     local role = role_lib.detect(unison and unison.config or {})
     if m.roles and #m.roles > 0 then
@@ -123,9 +140,45 @@ function M.install(name, version)
     return true, m
 end
 
-function M.remove(name)
+function M.install(name, version)
+    return installInternal(name, version, {})
+end
+
+-- Inspect every installed package's manifest and return the names that
+-- require <name>. Used so `upm remove` can refuse to leave orphans.
+function M.dependents(name)
+    local out = {}
+    for installedName, _ in pairs(registry.load()) do
+        if installedName ~= name then
+            local mf = APPS_DIR .. "/" .. installedName .. "/manifest.lua"
+            local fn = loadfile(mf)
+            if fn then
+                local ok, m = pcall(fn)
+                if ok and type(m) == "table" and m.requires then
+                    for _, dep in ipairs(m.requires) do
+                        local depName = dep:match("^([^@]+)") or dep
+                        if depName == name then
+                            out[#out + 1] = installedName; break
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+function M.remove(name, opts)
+    opts = opts or {}
     local entry = registry.get(name)
     if not entry then return false, "not installed" end
+    if not opts.force then
+        local users = M.dependents(name)
+        if #users > 0 then
+            return false, "package required by: " .. table.concat(users, ", ") ..
+                " (use force=true to remove anyway)"
+        end
+    end
     fsLib.deleteIf(APPS_DIR .. "/" .. name)
     registry.remove(name)
     log.info("upm", "removed " .. name)

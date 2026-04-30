@@ -103,6 +103,56 @@ function Process:setPriority(v) return scheduler.setPriority(self.pid, v) end
 function Process:nice(delta)    return scheduler.nice(self.pid, delta) end
 function Process:info()         return scheduler.get(self.pid) end
 
+----------------------------------------------------------------------
+-- Cross-package exec — spawns an installed UPM package's main.lua as
+-- a subprocess inside the same sandbox the shell would use.
+----------------------------------------------------------------------
+
+function M.exec(packageName, args, opts)
+    deps()
+    opts = opts or {}
+    local appDir = "/unison/apps/" .. tostring(packageName)
+    if not (fs.exists(appDir) and fs.isDir(appDir)) then
+        return nil, "package not installed: " .. tostring(packageName)
+    end
+
+    local manifestFile = appDir .. "/manifest.lua"
+    local entry = "main.lua"
+    local permissions = { "all" }
+    if fs.exists(manifestFile) then
+        local fn = loadfile(manifestFile)
+        if fn then
+            local mok, m = pcall(fn)
+            if mok and type(m) == "table" then
+                entry = m.entry or entry
+                if m.permissions then permissions = m.permissions end
+            end
+        end
+    end
+
+    local mainPath = appDir .. "/" .. entry
+    if not fs.exists(mainPath) then
+        return nil, "package entry missing: " .. mainPath
+    end
+
+    local sandbox = dofile("/unison/kernel/sandbox.lua")
+    return M.spawn(function()
+        local ok, err = sandbox.execFile(mainPath, permissions, table.unpack(args or {}))
+        if not ok then error(err, 0) end
+    end, packageName, {
+        priority = opts.priority,
+        group    = opts.group or "user",
+    })
+end
+
+function M.findByName(name)
+    deps()
+    for _, info in ipairs(scheduler.list()) do
+        if info.name == name then return info end
+    end
+    return nil
+end
+
 function M.list()
     deps()
     return scheduler.list()

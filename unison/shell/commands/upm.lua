@@ -19,7 +19,7 @@ local function help()
     print("  info <name>           show package details")
     print("  install <name>[@<v>]  install or replace a package")
     print("  list                  list installed packages")
-    print("  remove <name>         uninstall a package")
+    print("  remove <name> [-f]    uninstall (refuses if dependants exist)")
     print("  update [<name>]       update an app package (one or all)")
     print("  upgrade [-y]          check for and apply an OS upgrade")
     print("  upgrade -d [-y]       refresh the attached installer disk")
@@ -107,7 +107,16 @@ local function cmdInfo(args)
     if m.min_platform then
         print("  min_platform:" .. tostring(m.min_platform))
     end
+    if m.requires and #m.requires > 0 then
+        print("  requires:    " .. table.concat(m.requires, ", "))
+    end
     print("  source:      " .. d.source)
+
+    -- show what's already installed depending on this package
+    local users = pm().dependents(name)
+    if #users > 0 then
+        print("  used by:     " .. table.concat(users, ", "))
+    end
 end
 
 local function cmdInstall(args)
@@ -143,9 +152,13 @@ local function cmdList()
 end
 
 local function cmdRemove(args)
-    local name = args[1]
-    if not name then printError("usage: upm remove <name>"); return end
-    local ok, err = pm().remove(name)
+    local name, force = nil, false
+    for _, a in ipairs(args) do
+        if a == "-f" or a == "--force" then force = true
+        elseif not name then name = a end
+    end
+    if not name then printError("usage: upm remove <name> [--force]"); return end
+    local ok, err = pm().remove(name, { force = force })
     if not ok then printError("upm: " .. tostring(err)); return end
     print("removed " .. name)
 end
