@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "phase": 10,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -101,8 +101,7 @@
       "unison/shell/commands/cat.lua",
       "unison/shell/commands/tail.lua",
       "unison/shell/commands/nano.lua",
-      "unison/apps/ssh/manifest.lua",
-      "unison/apps/ssh/main.lua"
+      "unison/shell/commands/ssh.lua"
     ],
     "master": [],
     "turtle": [],
