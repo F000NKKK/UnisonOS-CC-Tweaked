@@ -1,4 +1,5 @@
 local COMMANDS_DIR = "/unison/shell/commands"
+local scrollback = dofile("/unison/lib/scrollback.lua")
 
 local function loadCommands()
     local cmds = {}
@@ -23,15 +24,10 @@ local function tokenize(line)
     return toks
 end
 
-local function shortCwd(cwd)
-    if cwd == "/" then return "/" end
-    return cwd
-end
-
 local function prompt(ctx)
     local node = (unison and unison.node) or "node"
     if term.isColor and term.isColor() then term.setTextColor(colors.lightBlue) end
-    write("[" .. node .. " " .. shortCwd(ctx.cwd) .. "]")
+    write("[" .. node .. " " .. (ctx.cwd or "/") .. "]")
     if term.setTextColor then term.setTextColor(colors.white) end
     write("$ ")
 end
@@ -45,7 +41,12 @@ return function()
         cwd = "/",
     }
 
-    print("Type 'help' for available commands.")
+    -- Capture output into a ring buffer so the user can scroll back over
+    -- everything that's been printed, even after it scrolled off the top.
+    scrollback.install({ max = 1500 })
+    ctx.scrollback = scrollback
+
+    print("Type 'help' for available commands. Press Ctrl-S or type 'scroll' to read history.")
     print("")
 
     while ctx.running do
@@ -53,26 +54,34 @@ return function()
         local line = read(nil, ctx.history)
         if line and line ~= "" then
             ctx.history[#ctx.history + 1] = line
-            local toks = tokenize(line)
-            local name = toks[1]
-            table.remove(toks, 1)
-            local cmd = cmds[name]
-            if cmd then
-                local ok, err = pcall(cmd.run, ctx, toks)
-                if not ok then printError("error: " .. tostring(err)) end
-            elseif name and fs.exists("/unison/apps/" .. name) and
-                   fs.isDir("/unison/apps/" .. name) then
-                -- Installed UPM packages are callable directly as commands.
-                local runCmd = cmds["run"]
-                if runCmd then
-                    table.insert(toks, 1, name)
-                    local ok, err = pcall(runCmd.run, ctx, toks)
-                    if not ok then printError("error: " .. tostring(err)) end
-                else
-                    printError("run command missing")
-                end
+            scrollback.push("$ " .. line)
+
+            -- 'scroll' / 's' is intercepted before command lookup so it
+            -- works regardless of what other commands are installed.
+            if line == "scroll" or line == "s" then
+                scrollback.pager()
             else
-                printError("unknown command: " .. tostring(name))
+                local toks = tokenize(line)
+                local name = toks[1]
+                table.remove(toks, 1)
+                local cmd = cmds[name]
+                if cmd then
+                    local ok, err = pcall(cmd.run, ctx, toks)
+                    if not ok then printError("error: " .. tostring(err)) end
+                elseif name and fs.exists("/unison/apps/" .. name) and
+                       fs.isDir("/unison/apps/" .. name) then
+                    -- Installed UPM packages are callable as bare commands.
+                    local runCmd = cmds["run"]
+                    if runCmd then
+                        table.insert(toks, 1, name)
+                        local ok, err = pcall(runCmd.run, ctx, toks)
+                        if not ok then printError("error: " .. tostring(err)) end
+                    else
+                        printError("run command missing")
+                    end
+                else
+                    printError("unknown command: " .. tostring(name))
+                end
             end
         end
     end

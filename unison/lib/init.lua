@@ -12,4 +12,5 @@ return {
     app     = dofile("/unison/lib/app.lua"),
     fmt     = dofile("/unison/lib/fmt.lua"),
     gps     = dofile("/unison/lib/gps.lua"),
+    scrollback = dofile("/unison/lib/scrollback.lua"),
 }

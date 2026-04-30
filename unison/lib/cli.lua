@@ -152,9 +152,12 @@ function M.printHelp(spec)
         c._name = name
         print(string.format("  %-22s %s", M.usage(c), c.desc or ""))
     end
+    print(string.format("  %-22s %s", "scroll / s", "open the scrollback pager"))
     print(string.format("  %-22s %s", "help / ?", "show this listing"))
     print(string.format("  %-22s %s", "q / quit / exit", "leave"))
 end
+
+local scrollback = dofile("/unison/lib/scrollback.lua")
 
 ----------------------------------------------------------------------
 -- Interactive REPL
@@ -162,6 +165,7 @@ end
 
 function M.run(spec)
     local ctx = { running = true, cwd = "/", state = spec.state or {} }
+    scrollback.install()
     if spec.intro then print(spec.intro) end
 
     while ctx.running do
@@ -171,9 +175,11 @@ function M.run(spec)
         local line = read()
         if line == nil then break end
         line = line:gsub("^%s+", ""):gsub("%s+$", "")
+        scrollback.push((spec.prompt or "") .. "> " .. line)
         if line == "" then
         elseif line == "q" or line == "quit" or line == "exit" then break
         elseif line == "help" or line == "?" then M.printHelp(spec)
+        elseif line == "scroll" or line == "s" then scrollback.pager()
         else
             local ok, err = M.dispatch(spec, line, ctx)
             if not ok then
@@ -185,7 +191,11 @@ function M.run(spec)
         end
     end
 
+    scrollback.uninstall()
     if spec.on_exit then pcall(spec.on_exit, ctx) end
 end
+
+M.pager = scrollback.pager
+M.pushLine = scrollback.push
 
 return M
