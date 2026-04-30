@@ -8,6 +8,7 @@
   :root {
     --bg: #0d1117;
     --panel: #161b22;
+    --panel2: #1f242c;
     --border: #30363d;
     --text: #c9d1d9;
     --muted: #8b949e;
@@ -21,19 +22,20 @@
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: var(--bg); color: var(--text);
-    font: 14px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font: 13px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
   }
   header {
     display: flex; align-items: center; gap: 16px;
     padding: 10px 16px; border-bottom: 1px solid var(--border);
     background: var(--panel);
+    flex-wrap: wrap;
   }
   header h1 {
     margin: 0; font-size: 16px; font-weight: 600;
     color: var(--accent); letter-spacing: 0.5px;
   }
   header .status { color: var(--muted); font-size: 12px; }
-  header .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  header .right { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
   button, .btn {
     background: transparent; color: var(--text);
@@ -42,6 +44,8 @@
   }
   button:hover { background: var(--hover); border-color: var(--accent); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.danger:hover { border-color: var(--err); }
+  button.primary { border-color: var(--accent); color: var(--accent); }
   input[type=text], input[type=password] {
     background: var(--bg); color: var(--text); border: 1px solid var(--border);
     padding: 4px 8px; border-radius: 4px; font: inherit;
@@ -50,8 +54,8 @@
   main {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 16px;
-    padding: 16px;
+    gap: 12px;
+    padding: 12px;
     height: calc(100% - 49px);
   }
   .panel {
@@ -60,20 +64,22 @@
     display: flex; flex-direction: column;
   }
   .panel h2 {
-    margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 600;
+    margin: 0; padding: 8px 12px; font-size: 12px; font-weight: 600;
     color: var(--muted); border-bottom: 1px solid var(--border);
     text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: space-between;
   }
+  .panel h2 .right { display: flex; gap: 6px; }
   .panel .body { flex: 1; overflow: auto; }
 
   table {
-    width: 100%; border-collapse: collapse; font-size: 13px;
+    width: 100%; border-collapse: collapse; font-size: 12px;
   }
-  th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; }
   tr.row { cursor: pointer; }
   tr.row:hover { background: var(--hover); }
-  tr.row.selected { background: var(--hover); }
+  tr.row.selected { background: var(--panel2); border-left: 2px solid var(--accent); }
 
   .status-dot {
     display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -84,17 +90,22 @@
 
   .small { font-size: 11px; color: var(--muted); }
 
-  #log { font-size: 12px; padding: 8px 12px; }
-  .log-line { white-space: pre-wrap; word-break: break-all; padding: 2px 0; }
+  #log { font-size: 11px; padding: 6px 10px; }
+  .log-line { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
   .log-line.err { color: var(--err); }
   .log-line.warn { color: var(--warn); }
   .log-line.ok { color: var(--ok); }
+  .log-line.in { color: var(--accent); }
 
   .actions {
-    display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px;
     border-bottom: 1px solid var(--border);
   }
   .actions input[type=text] { flex: 1; min-width: 160px; }
+  .actions .group {
+    display: flex; gap: 4px; align-items: center;
+    padding-left: 8px; border-left: 1px solid var(--border);
+  }
 
   .auth-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.85);
@@ -104,7 +115,7 @@
   .auth-overlay[hidden] { display: none !important; }
   .auth-card {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 24px; width: 400px;
+    border-radius: 8px; padding: 24px; width: 420px;
   }
   .auth-card h2 { margin: 0 0 12px 0; color: var(--accent); }
   .auth-card label { display: block; margin: 8px 0 4px; color: var(--muted); }
@@ -112,33 +123,51 @@
   .auth-card .row { display: flex; gap: 8px; margin-top: 16px; }
   .auth-card .row button { flex: 1; }
   .auth-card .err { color: var(--err); font-size: 12px; min-height: 16px; }
+
+  .ws-led {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--err); margin-right: 4px;
+  }
+  .ws-led.ok { background: var(--ok); }
 </style>
 </head>
 <body>
 
 <header>
   <h1>UnisonOS Console</h1>
+  <span class="status"><span class="ws-led" id="ws-led"></span><span id="ws-state">disconnected</span></span>
   <span class="status" id="conn-status">checking…</span>
   <div class="right">
     <span class="small" id="device-count"></span>
+    <button id="bulk-update-os" class="primary" title="exec 'upm upgrade -y' on every device">update OS all</button>
+    <button id="bulk-update-pkg" class="primary" title="exec 'upm update' on every device">update pkgs all</button>
+    <button id="bulk-reboot" class="danger" title="exec 'reboot' on every device">reboot all</button>
     <button id="logout-btn" title="forget the saved API config">logout</button>
   </div>
 </header>
 
 <main>
   <section class="panel">
-    <h2>Devices</h2>
+    <h2>
+      <span>Devices</span>
+      <span class="right"><button id="refresh-btn">refresh</button></span>
+    </h2>
     <div class="actions">
-      <input id="exec-input" type="text" placeholder='shell command for selected device, e.g. "version"' />
-      <button id="ping-btn">ping</button>
-      <button id="exec-btn">exec</button>
-      <button id="refresh-btn">refresh</button>
+      <input id="exec-input" type="text" placeholder='shell line for selected device, e.g. "version"' />
+      <button id="ping-btn" title="send a ping message">ping</button>
+      <button id="exec-btn" title="run shell command">exec</button>
+      <span class="group">
+        <button data-quick="version">version</button>
+        <button data-quick="upm upgrade -y">upgrade</button>
+        <button data-quick="service list">services</button>
+        <button data-quick="reboot" class="danger">reboot</button>
+      </span>
     </div>
     <div class="body">
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>Role</th><th>Name</th><th>Version</th><th>Seen</th><th>Fuel</th><th>Inv</th>
+            <th>ID</th><th>Role</th><th>Name</th><th>Ver</th><th>Seen</th><th>Fuel</th><th>Inv</th>
           </tr>
         </thead>
         <tbody id="devices-tbody"></tbody>
@@ -147,7 +176,10 @@
   </section>
 
   <section class="panel">
-    <h2>Activity</h2>
+    <h2>
+      <span>Activity (incoming via WS, outgoing via HTTP)</span>
+      <span class="right"><button id="clear-log">clear</button></span>
+    </h2>
     <div class="body" id="log"></div>
   </section>
 </main>
@@ -163,7 +195,7 @@
     <div class="err" id="auth-err"></div>
     <div class="row">
       <button id="auth-cancel">cancel</button>
-      <button id="auth-ok">connect</button>
+      <button id="auth-ok" class="primary">connect</button>
     </div>
   </div>
 </div>
@@ -172,9 +204,18 @@
 (function () {
   const STORAGE_KEY = 'unison-console';
   const POLL_MS = 2000;
+
+  // Stable per-tab id so the bus can route replies back to us.
+  const myId = sessionStorage.getItem('unison-console-id') ||
+    ('console-' + Math.random().toString(36).slice(2, 10));
+  sessionStorage.setItem('unison-console-id', myId);
+
   let cfg = null;
   let selectedId = null;
-  let timer = null;
+  let pollTimer = null;
+  let ws = null;
+  let wsRetry = null;
+  let devices = {};
 
   const $ = (id) => document.getElementById(id);
 
@@ -187,7 +228,8 @@
 
   function defaultBase() {
     const url = new URL(location.href);
-    return `${url.protocol}//${url.hostname}:${url.port || (url.protocol === 'https:' ? 9274 : 9273)}`;
+    const port = url.port || (url.protocol === 'https:' ? 9274 : 9273);
+    return `${url.protocol}//${url.hostname}:${port}`;
   }
 
   function showAuth(err) {
@@ -213,6 +255,60 @@
     return r.json();
   }
 
+  // ---- WebSocket -------------------------------------------------------
+
+  function wsUrl() {
+    const base = cfg && cfg.base ? cfg.base : defaultBase();
+    return base
+      .replace(/^http(s)?:\/\//i, (m, s) => s ? 'wss://' : 'ws://')
+      .replace(/:9273(\/|$)/, ':9275$1')
+      .replace(/:9274(\/|$)/, ':9276$1');
+  }
+
+  function setWsState(state) {
+    $('ws-state').textContent = state;
+    $('ws-led').classList.toggle('ok', state === 'connected');
+  }
+
+  function connectWs() {
+    if (ws) try { ws.close(); } catch (_) {}
+    setWsState('connecting…');
+    let url = wsUrl();
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      logLine('ws connect threw: ' + e.message, 'err');
+      scheduleWsRetry(); return;
+    }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'auth', id: myId, token: (cfg && cfg.token) || '',
+        role: 'console', name: 'web-console', version: 'dashboard'
+      }));
+    };
+    ws.onmessage = (ev) => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (_) { return; }
+      if (m.type === 'ready') { setWsState('connected'); logLine('ws ready', 'ok'); return; }
+      if (m.type === 'error') { setWsState('rejected'); logLine('ws auth: ' + m.error, 'err'); return; }
+      if (m.type === 'message' && m.envelope) {
+        const e = m.envelope;
+        const body = e.msg || {};
+        const fromId = body.from || '?';
+        const summary = JSON.stringify(body);
+        logLine(`<- ${body.type || '?'} from ${fromId}  ${summary}`, 'in');
+      }
+    };
+    ws.onerror = () => { setWsState('error'); };
+    ws.onclose = () => { setWsState('disconnected'); scheduleWsRetry(); };
+  }
+  function scheduleWsRetry() {
+    if (wsRetry) clearTimeout(wsRetry);
+    wsRetry = setTimeout(connectWs, 4000);
+  }
+
+  // ---- Helpers ---------------------------------------------------------
+
   function fmtAge(ms) {
     if (!ms) return '-';
     const s = Math.floor((Date.now() - ms) / 1000);
@@ -237,17 +333,16 @@
     const log = $('log');
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
-    while (log.children.length > 500) log.removeChild(log.firstChild);
+    while (log.children.length > 1000) log.removeChild(log.firstChild);
   }
 
   async function refresh() {
     try {
-      const devices = await api('/api/devices');
+      devices = await api('/api/devices');
       $('conn-status').textContent = 'online';
       $('conn-status').style.color = 'var(--ok)';
-      const ids = Object.keys(devices).sort();
+      const ids = Object.keys(devices).filter(id => id !== myId).sort();
       $('device-count').textContent = ids.length + ' device' + (ids.length === 1 ? '' : 's');
-
       const tbody = $('devices-tbody');
       tbody.innerHTML = '';
       for (const id of ids) {
@@ -282,40 +377,48 @@
     logLine('selected ' + id);
   }
 
-  async function pingSelected() {
-    if (!selectedId) { logLine('select a device first', 'warn'); return; }
+  async function pushMessage(deviceId, body) {
+    body = body || {};
+    body.from = body.from || myId;
     try {
-      const r = await api('/api/messages/' + selectedId, {
-        method: 'POST',
-        body: { type: 'ping', from: 'console' }
-      });
-      logLine('queued ping → ' + selectedId + '  id=' + (r.message?.id || ''), 'ok');
+      const r = await api('/api/messages/' + deviceId, { method: 'POST', body });
+      logLine(`-> ${body.type || '?'} to ${deviceId}`, 'ok');
+      return r;
     } catch (e) {
-      logLine('ping failed: ' + e.message, 'err');
+      logLine(`send to ${deviceId} failed: ${e.message}`, 'err');
     }
   }
 
-  async function execSelected() {
-    const cmd = $('exec-input').value.trim();
+  async function pingSelected() {
+    if (!selectedId) { logLine('select a device first', 'warn'); return; }
+    await pushMessage(selectedId, { type: 'ping' });
+  }
+  async function execSelected(cmdOverride) {
+    const cmd = (cmdOverride || $('exec-input').value).trim();
     if (!selectedId) { logLine('select a device first', 'warn'); return; }
     if (!cmd) { logLine('enter a shell command', 'warn'); return; }
-    try {
-      const r = await api('/api/messages/' + selectedId, {
-        method: 'POST',
-        body: { type: 'exec', command: cmd, from: 'console' }
-      });
-      logLine('queued exec → ' + selectedId + ' : ' + cmd, 'ok');
-    } catch (e) {
-      logLine('exec failed: ' + e.message, 'err');
+    await pushMessage(selectedId, { type: 'exec', command: cmd });
+  }
+
+  async function bulkExec(cmd, label) {
+    const ids = Object.keys(devices).filter(id => id !== myId);
+    if (ids.length === 0) { logLine('no devices online', 'warn'); return; }
+    if (!confirm(`Run "${cmd}" on ${ids.length} device(s)?`)) return;
+    logLine(`bulk: ${label || cmd} on ${ids.length} devices`, 'ok');
+    for (const id of ids) {
+      await pushMessage(id, { type: 'exec', command: cmd });
     }
   }
+
+  // ---- Boot ------------------------------------------------------------
 
   function start() {
     cfg = loadCfg();
     if (!cfg) { showAuth(); return; }
     refresh();
-    if (timer) clearInterval(timer);
-    timer = setInterval(refresh, POLL_MS);
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(refresh, POLL_MS);
+    connectWs();
   }
 
   $('auth-ok').addEventListener('click', () => {
@@ -330,15 +433,24 @@
   $('auth-cancel').addEventListener('click', () => hideAuth());
   $('logout-btn').addEventListener('click', () => {
     clearCfg(); cfg = null;
-    if (timer) clearInterval(timer);
+    if (pollTimer) clearInterval(pollTimer);
+    if (ws) try { ws.close(); } catch(_) {}
     showAuth();
   });
   $('refresh-btn').addEventListener('click', refresh);
+  $('clear-log').addEventListener('click', () => $('log').innerHTML = '');
   $('ping-btn').addEventListener('click', pingSelected);
-  $('exec-btn').addEventListener('click', execSelected);
+  $('exec-btn').addEventListener('click', () => execSelected());
   $('exec-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') execSelected();
   });
+  document.querySelectorAll('button[data-quick]').forEach(b => {
+    b.addEventListener('click', () => execSelected(b.dataset.quick));
+  });
+
+  $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y', 'OS upgrade'));
+  $('bulk-update-pkg').addEventListener('click', () => bulkExec('upm update', 'package update'));
+  $('bulk-reboot').addEventListener('click', () => bulkExec('reboot', 'reboot'));
 
   start();
 })();
