@@ -85,22 +85,25 @@ end
 
 local function wsLoop()
     while true do
-        local ws, err = client.wsConnect()
-        if not ws then
+        sleep(0)   -- guarantee a yield each iteration
+        local ok, ws, err = pcall(client.wsConnect)
+        if not ok then
+            log.warn("rpcd", "wsConnect crash: " .. tostring(ws))
+            sleep(WS_RECONNECT_SEC)
+        elseif not ws then
             log.debug("rpcd", "ws unavailable: " .. tostring(err) .. "; using polling")
             sleep(WS_RECONNECT_SEC)
         else
             activeWs = ws
             log.info("rpcd", "ws connected")
             while true do
-                local raw = ws.receive()
-                if not raw then break end
+                local rok, raw = pcall(ws.receive)
+                if not rok or not raw then break end
+                sleep(0) -- yield even when messages arrive in bursts
                 local msg = textutils.unserializeJSON(raw)
                 if msg then
                     if msg.type == "message" and msg.envelope then
                         dispatch(msg.envelope)
-                    elseif msg.type == "pong" then
-                        -- ignore
                     end
                 end
             end
