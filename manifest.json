@@ -1,7 +1,7 @@
 {
   "name": "UnisonOS",
-  "version": "0.9.0",
-  "phase": 8,
+  "version": "0.9.1",
+  "phase": 9,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
@@ -16,6 +16,8 @@
       "unison/kernel/role.lua",
       "unison/kernel/services.lua",
       "unison/kernel/sandbox.lua",
+      "unison/kernel/process.lua",
+      "unison/kernel/async.lua",
       "unison/lib/fs.lua",
       "unison/lib/http.lua",
       "unison/lib/json.lua",

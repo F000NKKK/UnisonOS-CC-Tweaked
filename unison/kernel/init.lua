@@ -5,6 +5,8 @@ local ipc = dofile("/unison/kernel/ipc.lua")
 local log = dofile("/unison/kernel/log.lua")
 local role = dofile("/unison/kernel/role.lua")
 local services = dofile("/unison/kernel/services.lua")
+local process = dofile("/unison/kernel/process.lua")
+local async = dofile("/unison/kernel/async.lua")
 
 _G.unison = _G.unison or {}
 unison.kernel = {
@@ -13,6 +15,8 @@ unison.kernel = {
     log = log,
     role = role,
     services = services,
+    process = process,
+    async = async,
 }
 
 local function banner(nodeName, nodeRole, version)

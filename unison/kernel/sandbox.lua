@@ -158,7 +158,12 @@ local function appUnison()
     -- Read-only handles to kernel services, useful for app dashboards.
     u.kernel = {
         services = unison and unison.kernel and unison.kernel.services,
+        process  = unison and unison.kernel and unison.kernel.process,
+        async    = unison and unison.kernel and unison.kernel.async,
     }
+    -- Top-level shortcuts so apps don't have to spell out unison.kernel.process.
+    u.process = u.kernel.process
+    u.async   = u.kernel.async
     -- Common utility library — fs/http/json/semver/path. Available to every
     -- app regardless of permissions; capabilities (like raw http) are still
     -- gated separately, lib.* just provides convenience wrappers.
