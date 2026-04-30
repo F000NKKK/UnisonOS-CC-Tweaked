@@ -37,6 +37,15 @@ end
 
 local installed = false
 local origPrint, origPrintError, origWrite
+-- Re-entrancy / pause guard. While >0, captureWrite is a no-op so the
+-- wrapper doesn't double-record bytes that wrapped print is already going
+-- to store as a single joined line, and so read()'s line-editor echo
+-- doesn't accidentally bloat the buffer (and any related ordering
+-- weirdness can't break input).
+local depth = 0
+
+local function pause()  depth = depth + 1 end
+local function resume() depth = math.max(0, depth - 1) end
 
 function M.install(opts)
     if installed then return end
@@ -49,18 +58,29 @@ function M.install(opts)
         local parts = {}
         for i = 1, n do parts[i] = tostring((select(i, ...))) end
         captureLine(table.concat(parts, "\t"))
-        return origPrint(...)
+        pause()
+        local ok, ret = pcall(origPrint, ...)
+        resume()
+        if not ok then error(ret, 0) end
+        return ret
     end
     _G.printError = function(s)
         captureLine("[err] " .. tostring(s))
-        return origPrintError(s)
+        pause()
+        local ok, ret = pcall(origPrintError, s)
+        resume()
+        if not ok then error(ret, 0) end
+        return ret
     end
     _G.write = function(s)
-        captureWrite(s)
+        if depth == 0 then captureWrite(s) end
         return origWrite(s)
     end
     installed = true
 end
+
+M.pause = pause
+M.resume = resume
 
 function M.uninstall()
     if not installed then return end
