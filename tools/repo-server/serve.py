@@ -90,23 +90,28 @@ class Store:
         return os.path.join(self.queues_dir, safe + ".json")
 
     def push_message(self, device_id: str, msg: dict) -> dict:
-        with self.lock:
-            path = self.queue_path(device_id)
-            queue = self._read(path) or []
-            envelope = {
-                "id": str(uuid.uuid4()),
-                "ts": _now_ms(),
-                "to": device_id,
-                "msg": msg,
-            }
-            queue.append(envelope)
-            self._write(path, queue)
-        # Best-effort real-time delivery on top of the durable queue.
+        envelope = {
+            "id": str(uuid.uuid4()),
+            "ts": _now_ms(),
+            "to": device_id,
+            "msg": msg,
+        }
+        # Try real-time delivery first. If a WS subscriber is connected the
+        # hook returns True and we DO NOT persist — otherwise the same
+        # message would be duplicated when the client reconnects via HTTP
+        # polling and pops the durable queue.
+        delivered = False
         if self.push_hook:
             try:
-                self.push_hook(device_id, envelope)
+                delivered = bool(self.push_hook(device_id, envelope))
             except Exception:
-                pass
+                delivered = False
+        if not delivered:
+            with self.lock:
+                path = self.queue_path(device_id)
+                queue = self._read(path) or []
+                queue.append(envelope)
+                self._write(path, queue)
         return envelope
 
     def pop_messages(self, device_id: str, max_count: int = 64):
@@ -130,14 +135,16 @@ class WSHub:
         self.queues: dict[str, asyncio.Queue] = {}
         self.loop: asyncio.AbstractEventLoop | None = None
 
-    def push(self, device_id: str, envelope: dict) -> None:
-        """Called from any thread (HTTP handler) — pushes to subscribers."""
+    def push(self, device_id: str, envelope: dict) -> bool:
+        """Called from any thread. Returns True if a subscriber received the
+        envelope (so the durable queue can skip it)."""
         if not self.loop:
-            return
+            return False
         q = self.queues.get(device_id)
         if not q:
-            return
+            return False
         asyncio.run_coroutine_threadsafe(q.put(envelope), self.loop)
+        return True
 
     async def _handler(self, websocket):
         device_id = None
