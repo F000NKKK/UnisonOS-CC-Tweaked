@@ -22,7 +22,7 @@ REPO_RAW="${UNISON_REPO_RAW:-https://raw.githubusercontent.com/F000NKKK/UnisonOS
 
 echo "[1/6] installing system packages..."
 apt-get update -y
-apt-get install -y python3 git curl openssl ca-certificates
+apt-get install -y python3 python3-websockets git curl openssl ca-certificates
 
 echo "[2/6] creating user and dirs..."
 id -u unison >/dev/null 2>&1 || useradd --system --home /srv/unison --shell /usr/sbin/nologin unison

@@ -135,4 +135,58 @@ function M.poll()
     return get("/api/messages/" .. nodeId())
 end
 
+-- ---- WebSocket transport -------------------------------------------------
+
+local function wsBaseUrl()
+    if unison and unison.config and unison.config.ws_url then
+        return unison.config.ws_url
+    end
+    local b = baseUrl() or ""
+    if b:sub(1, 7) == "https://" then return "wss://" .. b:sub(9):gsub(":(%d+)$", ":9276") end
+    if b:sub(1, 7) == "http://"  then return "ws://"  .. b:sub(8):gsub(":(%d+)$", ":9275") end
+    return "ws://" .. b
+end
+
+function M.wsConnect()
+    if not http or not http.websocket then return nil, "no http.websocket" end
+    local url = wsBaseUrl()
+    local ws, err = http.websocket(url)
+    if not ws then return nil, "ws connect: " .. tostring(err) end
+    local hello = textutils.serializeJSON({
+        type = "auth",
+        id = nodeId(),
+        token = loadToken(),
+        role = unison and unison.role,
+        name = unison and unison.node,
+        version = (UNISON and UNISON.version) or "?",
+    })
+    ws.send(hello)
+    -- Wait briefly for the 'ready' frame.
+    local raw = ws.receive(5)
+    if not raw then ws.close(); return nil, "ws auth timeout" end
+    local resp = decode(raw)
+    if not resp or resp.type ~= "ready" then
+        ws.close()
+        return nil, "ws auth failed: " .. tostring(raw)
+    end
+    return ws
+end
+
+function M.wsSend(ws, target, msg)
+    if not ws then return false end
+    msg = msg or {}
+    msg.from = msg.from or nodeId()
+    return ws.send(textutils.serializeJSON({
+        type = "send", to = tostring(target), msg = msg,
+    }))
+end
+
+function M.wsHeartbeat(ws, metrics)
+    if not ws then return false end
+    return ws.send(textutils.serializeJSON({
+        type = "heartbeat",
+        metrics = metrics or {},
+    }))
+end
+
 return M

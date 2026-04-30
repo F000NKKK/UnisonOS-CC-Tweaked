@@ -1,6 +1,7 @@
--- RPC daemon: registers this device with the VPS at startup, sends a
--- heartbeat every N seconds, and polls /api/messages/<id> for inbound
--- messages — dispatching them to handlers registered via M.on(type, fn).
+-- RPC daemon. Tries to maintain a WebSocket connection to the VPS for
+-- real-time message delivery; falls back to HTTP polling if the WS
+-- handshake fails. Heartbeats and outbound sends use the same transport
+-- when WS is up, otherwise plain HTTP.
 
 local log = dofile("/unison/kernel/log.lua")
 local client = dofile("/unison/rpc/client.lua")
@@ -8,8 +9,11 @@ local client = dofile("/unison/rpc/client.lua")
 local M = {}
 
 local handlers = {}
-local POLL_INTERVAL = 5
+local POLL_INTERVAL = 3
 local HEARTBEAT_INTERVAL = 20
+local WS_RECONNECT_SEC = 5
+
+local activeWs = nil
 
 function M.on(msgType, fn)
     handlers[msgType] = handlers[msgType] or {}
@@ -29,15 +33,28 @@ local function dispatch(envelope)
     end
 end
 
+local function collectMetrics()
+    local metrics = {
+        uptime = math.floor((os.epoch("utc") - (UNISON.boot_time or 0)) / 1000),
+    }
+    if turtle then
+        metrics.fuel = turtle.getFuelLevel()
+        local used = 0
+        for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
+        metrics.inventory_used = used
+    end
+    return metrics
+end
+
 local function pollLoop()
     while true do
-        local resp, err = client.poll()
-        if resp and type(resp.messages) == "table" then
-            for _, env in ipairs(resp.messages) do
-                dispatch(env)
+        if not activeWs then
+            local resp, err = client.poll()
+            if resp and type(resp.messages) == "table" then
+                for _, env in ipairs(resp.messages) do dispatch(env) end
+            elseif err then
+                log.debug("rpcd", "poll error: " .. tostring(err))
             end
-        elseif err then
-            log.debug("rpcd", "poll error: " .. tostring(err))
         end
         sleep(POLL_INTERVAL)
     end
@@ -45,22 +62,53 @@ end
 
 local function heartbeatLoop()
     while true do
-        local metrics = {
-            uptime = math.floor((os.epoch("utc") - (UNISON.boot_time or 0)) / 1000),
-            free_mem = (function()
-                if collectgarbage then return collectgarbage("count") * 1024 end
-                return -1
-            end)(),
-        }
-        if turtle then
-            metrics.fuel = turtle.getFuelLevel()
-            local used = 0
-            for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
-            metrics.inventory_used = used
+        local metrics = collectMetrics()
+        if activeWs then
+            client.wsHeartbeat(activeWs, metrics)
+        else
+            local _, err = client.heartbeat(metrics)
+            if err then log.debug("rpcd", "heartbeat error: " .. tostring(err)) end
         end
-        local _, err = client.heartbeat(metrics)
-        if err then log.debug("rpcd", "heartbeat error: " .. tostring(err)) end
         sleep(HEARTBEAT_INTERVAL)
+    end
+end
+
+-- Wraps client.send so messages go through WS when available.
+local function wsAwareSend(target, msg)
+    if activeWs then
+        local ok = client.wsSend(activeWs, target, msg)
+        if ok then return { ok = true } end
+        -- WS send failed; fall through to HTTP
+    end
+    return client.send(target, msg)
+end
+
+local function wsLoop()
+    while true do
+        local ws, err = client.wsConnect()
+        if not ws then
+            log.debug("rpcd", "ws unavailable: " .. tostring(err) .. "; using polling")
+            sleep(WS_RECONNECT_SEC)
+        else
+            activeWs = ws
+            log.info("rpcd", "ws connected")
+            while true do
+                local raw = ws.receive()
+                if not raw then break end
+                local msg = textutils.unserializeJSON(raw)
+                if msg then
+                    if msg.type == "message" and msg.envelope then
+                        dispatch(msg.envelope)
+                    elseif msg.type == "pong" then
+                        -- ignore
+                    end
+                end
+            end
+            activeWs = nil
+            log.warn("rpcd", "ws closed; reconnecting in " .. WS_RECONNECT_SEC .. "s")
+            pcall(ws.close)
+            sleep(WS_RECONNECT_SEC)
+        end
     end
 end
 
@@ -70,18 +118,18 @@ function M.run()
     if err then log.warn("rpcd", "register failed: " .. tostring(err))
     else log.info("rpcd", "registered as " .. tostring(os.getComputerID())) end
 
-    -- expose the client for apps and shell commands. Bolt the daemon's
-    -- subscription API onto the client so apps can register handlers via
-    -- unison.rpc.on(type, fn) without touching rpcd directly.
+    -- Expose subscription + transport-aware send to apps.
     client.on  = M.on
-    client.off = function(msgType)
-        handlers[msgType] = nil
-    end
+    client.off = function(msgType) handlers[msgType] = nil end
+    -- Replace send with WS-aware variant; original HTTP send still
+    -- accessible via client.httpSend for fallback debugging.
+    client.httpSend = client.send
+    client.send = wsAwareSend
     unison.rpc = client
 
-    -- built-in handlers
+    -- Built-in handlers.
     M.on("ping", function(msg, env)
-        client.send(env.from or "broadcast", {
+        client.send(env.from or msg.from or "broadcast", {
             type = "pong",
             from = tostring(os.getComputerID()),
             in_reply_to = env.id,
@@ -93,7 +141,7 @@ function M.run()
         if not msg.command then return end
         log.info("rpcd", "remote exec: " .. tostring(msg.command))
         local ok, err = pcall(shell.run, msg.command)
-        client.send(env.from or "broadcast", {
+        client.send(env.from or msg.from or "broadcast", {
             type = "exec_reply",
             in_reply_to = env.id,
             ok = ok,
@@ -102,6 +150,7 @@ function M.run()
     end)
 
     local sched = unison.kernel.scheduler
+    sched.spawn(wsLoop, "rpcd-ws")
     sched.spawn(pollLoop, "rpcd-poll")
     sched.spawn(heartbeatLoop, "rpcd-hb")
 end

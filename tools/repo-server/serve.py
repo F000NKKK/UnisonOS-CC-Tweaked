@@ -2,25 +2,20 @@
 """
 UnisonOS package server + device message bus.
 
-* Static file server for /srv/unison (unchanged behaviour: HTTP on 9273,
-  HTTPS on 9274).
-* JSON API at /api/* providing:
-    POST /api/register                     register a device
-    POST /api/heartbeat                    heartbeat + metric upload
-    GET  /api/devices                      list registered devices
-    GET  /api/messages/<device>            pop queued messages for a device
-    POST /api/messages/<device>            queue a message for a device
-    POST /api/broadcast                    queue a message for every device
+* Static file server for /srv/unison (HTTP on 9273, HTTPS on 9274).
+* JSON API at /api/* (register, heartbeat, devices, messages, broadcast).
+* WebSocket bus on ws://0.0.0.0:9275 and wss://0.0.0.0:9276 — devices that
+  open a WS connection get messages pushed in real-time. HTTP polling is
+  still supported as a fallback.
 
-  All API calls require `Authorization: Bearer <api_token>` whose value
-  matches /etc/unison/api.token (sibling of the cloudflare token).
-
-State (devices, queues) lives in /srv/unison.state/ as JSON files.
+API auth: optional bearer token loaded from /etc/unison/api.token. WS auth:
+the very first frame must be {"type":"auth","id":"<dev>","token":"..."}.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import http.server
 import json
 import os
@@ -41,8 +36,13 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+# --------------------------------------------------------------------------
+# Persistent store. JSON files behind a single coarse lock — fine for our
+# fleet sizes.
+# --------------------------------------------------------------------------
+
 class Store:
-    """Tiny JSON-file store. One lock for the whole server, fine at our scale."""
+    """Tiny JSON-file store. One lock for the whole server."""
 
     def __init__(self, root: str):
         self.root = root
@@ -53,6 +53,9 @@ class Store:
         os.makedirs(self.queues_dir, exist_ok=True)
         if not os.path.isfile(self.devices_path):
             self._write(self.devices_path, {})
+        # Real-time push hook installed by WSHub once it's ready. None means
+        # HTTP-only delivery (queue is the only path).
+        self.push_hook = None  # type: ignore[assignment]
 
     @staticmethod
     def _read(path: str):
@@ -98,7 +101,13 @@ class Store:
             }
             queue.append(envelope)
             self._write(path, queue)
-            return envelope
+        # Best-effort real-time delivery on top of the durable queue.
+        if self.push_hook:
+            try:
+                self.push_hook(device_id, envelope)
+            except Exception:
+                pass
+        return envelope
 
     def pop_messages(self, device_id: str, max_count: int = 64):
         with self.lock:
@@ -110,12 +119,140 @@ class Store:
             return taken
 
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    server_version = "UnisonOS-Server/1.1"
-    store: "Store | None" = None        # set by factory
-    api_token: "str | None" = None      # set by factory
+# --------------------------------------------------------------------------
+# WebSocket hub. Runs on its own asyncio loop in a dedicated thread.
+# --------------------------------------------------------------------------
 
-    # ---- helpers -----------------------------------------------------------
+class WSHub:
+    def __init__(self, store: Store, token):
+        self.store = store
+        self.token = token
+        self.queues: dict[str, asyncio.Queue] = {}
+        self.loop: asyncio.AbstractEventLoop | None = None
+
+    def push(self, device_id: str, envelope: dict) -> None:
+        """Called from any thread (HTTP handler) — pushes to subscribers."""
+        if not self.loop:
+            return
+        q = self.queues.get(device_id)
+        if not q:
+            return
+        asyncio.run_coroutine_threadsafe(q.put(envelope), self.loop)
+
+    async def _handler(self, websocket):
+        device_id = None
+        queue: asyncio.Queue | None = None
+        try:
+            try:
+                raw = await asyncio.wait_for(websocket.recv(), timeout=10)
+            except asyncio.TimeoutError:
+                return
+            try:
+                auth = json.loads(raw)
+            except json.JSONDecodeError:
+                return
+            if auth.get("type") != "auth":
+                await websocket.send(json.dumps({"type": "error", "error": "auth required"}))
+                return
+            if self.token and auth.get("token") != self.token:
+                await websocket.send(json.dumps({"type": "error", "error": "unauthorized"}))
+                return
+            device_id = str(auth.get("id") or "")
+            if not device_id:
+                await websocket.send(json.dumps({"type": "error", "error": "id required"}))
+                return
+
+            self.store.upsert_device(device_id, {
+                "role": auth.get("role"),
+                "name": auth.get("name"),
+                "version": auth.get("version"),
+                "transport": "ws",
+            })
+
+            queue = asyncio.Queue()
+            self.queues[device_id] = queue
+
+            for env in self.store.pop_messages(device_id):
+                await queue.put(env)
+
+            await websocket.send(json.dumps({"type": "ready"}))
+
+            async def reader():
+                async for inbound in websocket:
+                    try:
+                        m = json.loads(inbound)
+                    except json.JSONDecodeError:
+                        continue
+                    t = m.get("type")
+                    if t == "ping":
+                        await websocket.send(json.dumps({"type": "pong"}))
+                    elif t == "send":
+                        target = str(m.get("to") or "")
+                        body = m.get("msg") or {}
+                        if isinstance(body, dict) and target:
+                            body.setdefault("from", device_id)
+                            self.store.push_message(target, body)
+                    elif t == "heartbeat":
+                        self.store.upsert_device(device_id, {
+                            "metrics": m.get("metrics") or {},
+                        })
+
+            async def writer():
+                while True:
+                    env = await queue.get()
+                    await websocket.send(json.dumps({"type": "message", "envelope": env}))
+
+            done, pending = await asyncio.wait(
+                [asyncio.create_task(reader()), asyncio.create_task(writer())],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                t.cancel()
+        except Exception as exc:
+            print(f"[ws] error: {exc}", flush=True)
+        finally:
+            if device_id and self.queues.get(device_id) is queue:
+                self.queues.pop(device_id, None)
+
+    async def _serve(self, host, ports, cert, key):
+        # imported lazily so the server still runs even if the websockets
+        # package isn't installed (we just won't have WS).
+        import websockets
+
+        servers = []
+        servers.append(await websockets.serve(self._handler, host, ports[0]))
+        print(f"[unison] WS    :{ports[0]} -> /ws", flush=True)
+        if ports[1] is not None and cert and key and os.path.isfile(cert):
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(certfile=cert, keyfile=key)
+            servers.append(await websockets.serve(self._handler, host, ports[1], ssl=ctx))
+            print(f"[unison] WSS   :{ports[1]} -> /ws", flush=True)
+        await asyncio.Future()  # run forever
+
+    def start(self, host, ws_port, wss_port, cert, key):
+        def run():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            try:
+                self.loop.run_until_complete(
+                    self._serve(host, (ws_port, wss_port), cert, key))
+            except Exception as exc:
+                print(f"[ws] hub stopped: {exc}", flush=True)
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        # Wire push hook so HTTP push_message also delivers via WS.
+        self.store.push_hook = self.push
+        return t
+
+
+# --------------------------------------------------------------------------
+# HTTP / HTTPS handlers (file server + JSON API).
+# --------------------------------------------------------------------------
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    server_version = "UnisonOS-Server/1.2"
+    store: "Store | None" = None
+    api_token: "str | None" = None
 
     def _send_json(self, status: int, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -137,7 +274,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _check_auth(self) -> bool:
         if not self.api_token:
-            return True   # auth disabled
+            return True
         h = self.headers.get("Authorization", "")
         if h.startswith("Bearer "):
             return h[7:].strip() == self.api_token
@@ -153,27 +290,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.log_date_time_string(), self.address_string(), format % args))
         sys.stdout.flush()
 
-    # ---- API dispatch ------------------------------------------------------
-
     def _handle_api(self, method: str, path: str) -> bool:
         if not path.startswith("/api/"):
             return False
-
         if not self._check_auth():
             self._send_json(401, {"error": "unauthorized"})
             return True
-
         if self.store is None:
             self._send_json(500, {"error": "store not initialised"})
             return True
         store = self.store
 
         parts = path.split("/")
-        # /api/<segment>/...
-        if len(parts) >= 3:
-            seg = parts[2]
-        else:
-            seg = ""
+        seg = parts[2] if len(parts) >= 3 else ""
 
         try:
             if method == "POST" and seg == "register":
@@ -182,9 +311,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if not dev_id:
                     return self._send_json(400, {"error": "id required"}) or True
                 rec = store.upsert_device(str(dev_id), {
-                    "role":      body.get("role"),
-                    "name":      body.get("name"),
-                    "version":   body.get("version"),
+                    "role": body.get("role"),
+                    "name": body.get("name"),
+                    "version": body.get("version"),
                     "registered_at": body.get("registered_at") or _now_ms(),
                 })
                 return self._send_json(200, {"ok": True, "device": rec}) or True
@@ -226,11 +355,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             self._send_json(404, {"error": "no such endpoint"})
             return True
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             self._send_json(500, {"error": str(exc)})
             return True
-
-    # ---- entry points ------------------------------------------------------
 
     def do_GET(self):
         url = urlparse(self.path)
@@ -279,10 +406,13 @@ def main():
     p.add_argument("--state",    default=os.environ.get("UNISON_STATE", STATE_DIR_DEFAULT))
     p.add_argument("--http",     type=int, default=int(os.environ.get("UNISON_HTTP_PORT",  "9273")))
     p.add_argument("--https",    type=int, default=int(os.environ.get("UNISON_HTTPS_PORT", "9274")))
+    p.add_argument("--ws",       type=int, default=int(os.environ.get("UNISON_WS_PORT",  "9275")))
+    p.add_argument("--wss",      type=int, default=int(os.environ.get("UNISON_WSS_PORT", "9276")))
     p.add_argument("--cert",     default=os.environ.get("UNISON_CERT", "/etc/unison/server.crt"))
     p.add_argument("--key",      default=os.environ.get("UNISON_KEY",  "/etc/unison/server.key"))
     p.add_argument("--token-file", default=os.environ.get("UNISON_API_TOKEN_FILE", TOKEN_FILE_DEFAULT))
-    p.add_argument("--no-tls", action="store_true")
+    p.add_argument("--no-tls",   action="store_true")
+    p.add_argument("--no-ws",    action="store_true")
     args = p.parse_args()
 
     if not os.path.isdir(args.root):
@@ -296,9 +426,9 @@ def main():
             token = fh.read().strip() or None
 
     if token:
-        print(f"[unison] API auth: required (token from {args.token_file})", flush=True)
+        print(f"[unison] auth: required (token from {args.token_file})", flush=True)
     else:
-        print(f"[unison] API auth: DISABLED (no token at {args.token_file})", flush=True)
+        print(f"[unison] auth: DISABLED (no token at {args.token_file})", flush=True)
 
     threads = [threading.Thread(
         target=_serve_plain,
@@ -313,6 +443,14 @@ def main():
                 daemon=True))
         else:
             print(f"[unison] cert/key missing; HTTPS disabled", flush=True)
+
+    if not args.no_ws:
+        try:
+            import websockets  # noqa: F401
+            hub = WSHub(store, token)
+            hub.start("0.0.0.0", args.ws, args.wss, args.cert, args.key)
+        except ImportError:
+            print(f"[unison] python3-websockets not installed; WS disabled", flush=True)
 
     for t in threads:
         t.start()

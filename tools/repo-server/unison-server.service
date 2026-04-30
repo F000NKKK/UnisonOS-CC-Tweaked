@@ -11,6 +11,8 @@ Environment=UNISON_ROOT=/srv/unison
 Environment=UNISON_STATE=/srv/unison.state
 Environment=UNISON_HTTP_PORT=9273
 Environment=UNISON_HTTPS_PORT=9274
+Environment=UNISON_WS_PORT=9275
+Environment=UNISON_WSS_PORT=9276
 Environment=UNISON_CERT=/etc/unison/server.crt
 Environment=UNISON_KEY=/etc/unison/server.key
 Environment=UNISON_API_TOKEN_FILE=/etc/unison/api.token
