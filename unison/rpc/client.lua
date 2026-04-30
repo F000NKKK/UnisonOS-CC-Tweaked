@@ -172,18 +172,25 @@ function M.wsConnect()
     return ws
 end
 
+local function safeSend(ws, payload)
+    if not ws then return false, "no ws" end
+    local ok, err = pcall(ws.send, payload)
+    if not ok then return false, tostring(err) end
+    return true
+end
+
 function M.wsSend(ws, target, msg)
     if not ws then return false end
     msg = msg or {}
     msg.from = msg.from or nodeId()
-    return ws.send(textutils.serializeJSON({
+    return safeSend(ws, textutils.serializeJSON({
         type = "send", to = tostring(target), msg = msg,
     }))
 end
 
 function M.wsHeartbeat(ws, metrics)
     if not ws then return false end
-    return ws.send(textutils.serializeJSON({
+    return safeSend(ws, textutils.serializeJSON({
         type = "heartbeat",
         metrics = metrics or {},
     }))

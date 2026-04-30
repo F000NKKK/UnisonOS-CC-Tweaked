@@ -99,13 +99,13 @@ local function wsLoop()
             while true do
                 local rok, raw = pcall(ws.receive)
                 if not rok or not raw then break end
-                sleep(0) -- yield even when messages arrive in bursts
                 local msg = textutils.unserializeJSON(raw)
-                if msg then
-                    if msg.type == "message" and msg.envelope then
-                        dispatch(msg.envelope)
-                    end
+                if msg and msg.type == "message" and msg.envelope then
+                    dispatch(msg.envelope)
                 end
+                -- Yield AFTER dispatch so any reply ws.send has time to
+                -- drain CC's per-socket pending queue before we read again.
+                sleep(0.05)
             end
             activeWs = nil
             log.warn("rpcd", "ws closed; reconnecting in " .. WS_RECONNECT_SEC .. "s")

@@ -114,14 +114,40 @@ class Store:
                 self._write(path, queue)
         return envelope
 
-    def pop_messages(self, device_id: str, max_count: int = 64):
+    def pop_messages(self, device_id: str, max_count: int = 64,
+                     max_age_ms: int = 60_000):
+        """Pop up to max_count messages from the durable queue. Drops any
+        envelope older than max_age_ms — stale work piled up while a device
+        was offline shouldn't replay all at once on reconnect."""
         with self.lock:
             path = self.queue_path(device_id)
             queue = self._read(path) or []
-            taken = queue[:max_count]
-            remaining = queue[max_count:]
+            cutoff = _now_ms() - max_age_ms
+            fresh = [e for e in queue if (e.get("ts") or 0) >= cutoff]
+            taken = fresh[:max_count]
+            remaining = fresh[max_count:]
             self._write(path, remaining)
             return taken
+
+    def purge_queue(self, device_id: str) -> int:
+        with self.lock:
+            path = self.queue_path(device_id)
+            queue = self._read(path) or []
+            self._write(path, [])
+            return len(queue)
+
+    def purge_all_queues(self) -> int:
+        with self.lock:
+            n = 0
+            for f in os.listdir(self.queues_dir):
+                if f.endswith(".json"):
+                    p = os.path.join(self.queues_dir, f)
+                    try:
+                        n += len(self._read(p) or [])
+                    except Exception:
+                        pass
+                    self._write(p, [])
+            return n
 
 
 # --------------------------------------------------------------------------
@@ -369,6 +395,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         return self._send_json(400, {"error": "json object required"}) or True
                     env = store.push_message(dev_id, body)
                     return self._send_json(200, {"ok": True, "message": env}) or True
+
+            if method == "POST" and seg == "purge":
+                # /api/purge        -> clear every device's durable queue
+                # /api/purge/<id>   -> clear just that device
+                if len(parts) >= 4 and parts[3]:
+                    n = store.purge_queue(parts[3])
+                    return self._send_json(200, {"ok": True, "dropped": n}) or True
+                n = store.purge_all_queues()
+                return self._send_json(200, {"ok": True, "dropped": n}) or True
 
             if method == "POST" and seg == "broadcast":
                 body = self._read_body() or {}
