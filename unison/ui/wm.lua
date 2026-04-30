@@ -29,7 +29,15 @@ local windows = {}
 local focusIdx = nil
 local running = false
 local tickTimer = nil
-local TICK_HZ = 4
+local TICK_HZ = 2
+
+-- Events that should trigger a redraw. Anything else (modem messages, ipc,
+-- random timers from other coroutines) is ignored to keep the screen calm.
+local INPUT_EVENTS = {
+    char = true, key = true, key_up = true,
+    mouse_click = true, mouse_drag = true, mouse_scroll = true, mouse_up = true,
+    paste = true, term_resize = true, monitor_resize = true,
+}
 
 local function nextId()
     return "win-" .. tostring(os.epoch and os.epoch("utc") or os.time()) ..
@@ -91,7 +99,8 @@ end
 
 function M.render()
     local buf = Buffer.new(targetTerm())
-    buf:clear(colors.black)
+    -- Each window's box paints its own background, so we skip term.clear()
+    -- to eliminate flicker. Initial clear happens once in M.run().
     for i, w in ipairs(windows) do
         if w.visible then
             local fg = w.fg or colors.white
@@ -143,6 +152,9 @@ end
 
 function M.run()
     running = true
+    -- Clean canvas exactly once.
+    term.setBackgroundColor(colors.black)
+    term.clear()
     M.render()
     tickTimer = os.startTimer(1 / TICK_HZ)
     while running do
@@ -151,13 +163,16 @@ function M.run()
             running = false
             break
         end
+        local needsRender = false
         if ev[1] == "timer" and ev[2] == tickTimer then
             tickAll(1 / TICK_HZ)
             tickTimer = os.startTimer(1 / TICK_HZ)
-        else
+            needsRender = true
+        elseif INPUT_EVENTS[ev[1]] then
             dispatch(ev)
+            needsRender = true
         end
-        M.render()
+        if needsRender then M.render() end
     end
     -- restore terminal
     term.setTextColor(colors.white)

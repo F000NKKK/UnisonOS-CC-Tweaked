@@ -43,29 +43,23 @@ function M.run(ctx, args)
     if not res then printError("not found: " .. target); return end
 
     local sandbox = dofile("/unison/kernel/sandbox.lua")
-    local sched = unison.kernel.scheduler
 
-    -- Ad-hoc scripts (no manifest) get full access — they were typed by the
-    -- user. Packages are sandboxed by their declared permissions.
     local permissions
     if res.manifest then
         permissions = res.manifest.permissions
         if not permissions or #permissions == 0 then
-            permissions = {}    -- minimal sandbox: no privileged APIs
+            permissions = {}
         end
     else
         permissions = { "all" }
     end
 
-    local pid = sched.spawn(function()
-        local ok, err = sandbox.execFile(res.path, permissions, table.unpack(rest))
-        if not ok then printError("runtime error: " .. tostring(err)) end
-    end, target)
-
-    print("started " .. target .. " as pid " .. pid)
-    if res.manifest and res.manifest.permissions then
-        print("  perms: " .. table.concat(res.manifest.permissions, ", "))
-    end
+    -- Inline execution: the app runs in the shell's coroutine, so its
+    -- pullEvent calls are the only ones receiving input while it's active.
+    -- This avoids the "shell and app both consume keys" duplication that
+    -- happens with sched.spawn. The shell prompt resumes when the app exits.
+    local ok, err = sandbox.execFile(res.path, permissions, table.unpack(rest))
+    if not ok then printError("runtime error: " .. tostring(err)) end
 end
 
 return M
