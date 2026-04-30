@@ -1,7 +1,7 @@
 {
   "name": "UnisonOS",
-  "version": "0.5.10",
-  "phase": 5,
+  "version": "0.6.0",
+  "phase": 6,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",

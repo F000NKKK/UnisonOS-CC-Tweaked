@@ -104,6 +104,9 @@ local function cmdInfo(args)
     print("  permissions: " .. table.concat(m.permissions or {}, ", "))
     print("  files:       " .. table.concat(m.files or {}, ", "))
     print("  versions:    " .. table.concat(r.versions or { m.version }, ", "))
+    if m.min_platform then
+        print("  min_platform:" .. tostring(m.min_platform))
+    end
     print("  source:      " .. d.source)
 end
 

@@ -26,7 +26,6 @@ local function parseManifest(raw)
     local loader = load or loadstring
     local fn, err = loader(raw, "manifest", "t")
     if not fn then
-        -- some Lua envs don't accept the mode argument
         fn, err = loader(raw, "manifest")
     end
     if not fn then return nil, err end
@@ -36,6 +35,36 @@ local function parseManifest(raw)
         return nil, "manifest missing required fields"
     end
     return t
+end
+
+local function parseSemver(v)
+    if type(v) ~= "string" then return { 0, 0, 0 } end
+    local out = {}
+    for n in v:gmatch("(%d+)") do out[#out + 1] = tonumber(n) end
+    while #out < 3 do out[#out + 1] = 0 end
+    return out
+end
+
+local function semverCompare(a, b)
+    local pa, pb = parseSemver(a), parseSemver(b)
+    for i = 1, math.max(#pa, #pb) do
+        local x, y = pa[i] or 0, pb[i] or 0
+        if x < y then return -1 elseif x > y then return 1 end
+    end
+    return 0
+end
+
+local function platformVersion()
+    return (UNISON and UNISON.version) or "0.0.0"
+end
+
+local function checkPlatformGate(m)
+    if not m.min_platform then return true end
+    local current = platformVersion()
+    if semverCompare(current, m.min_platform) >= 0 then return true end
+    return false, string.format(
+        "package requires UnisonOS >= %s (you have %s). Run 'upm upgrade' first.",
+        m.min_platform, current)
 end
 
 function M.fetchRegistry()
@@ -92,6 +121,9 @@ function M.install(name, version)
                 table.concat(m.roles, ", ") .. ")"
         end
     end
+
+    local platOk, platErr = checkPlatformGate(m)
+    if not platOk then return false, platErr end
 
     local target = APPS_DIR .. "/" .. name
     if fs.exists(target) then fs.delete(target) end

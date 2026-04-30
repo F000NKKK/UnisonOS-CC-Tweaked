@@ -20,9 +20,10 @@ HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
 | 4     | Service manager (systemd-style units, supervision) | done        |
 | 5.1   | HTTP-RPC via VPS message bus                       | done        |
 | 5.2   | Sandboxed apps (permissions enforced)              | done        |
-| 5.3   | TUI framework (windows, widgets)                   | pending     |
-| 5.4   | Cron / scheduled tasks                             | pending     |
-| 5.5   | Login + accounts                                   | pending     |
+| 5.3   | TUI framework (windows, widgets)                   | done        |
+| 6.0   | OS / packages decoupled (min_platform gate)        | done        |
+| 6.1   | Cron / scheduled tasks                             | pending     |
+| 6.2   | Login + accounts                                   | pending     |
 
 ## Network
 
@@ -165,6 +166,23 @@ the first that responds wins.
 
 Run an installed app with `run <name> [args...]`. Apps live in
 `/unison/apps/<name>/main.lua` (or whatever `entry` is in their manifest).
+
+### OS vs. package independence
+
+UnisonOS itself and the package catalogue live side-by-side in this repo
+but are **versioned and updated independently**:
+
+* `manifest.json` — OS file list, role mapping, OS version. Changes here
+  (and only here) ship through `upm upgrade`.
+* `apps/registry.json` + `apps/packages/<name>/<ver>/...` — packages.
+  Changes here ship through `upm install` / `upm update <name>`. They
+  never touch `/unison/*` system code and never trigger a reboot.
+
+Each package manifest may declare `min_platform = "X.Y.Z"`. UPM refuses
+to install a package whose `min_platform` is newer than the running OS
+and tells the user to `upm upgrade` first. So you can publish app
+updates as often as you like without bumping the OS, and the OS only
+gets bumped for actual platform changes.
 
 ### Sandbox / permissions
 
