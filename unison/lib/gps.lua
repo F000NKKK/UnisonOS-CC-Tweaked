@@ -56,6 +56,14 @@ local function findDevice(devices, idOrName)
     return nil
 end
 
+-- Cache the "local gps unavailable" decision so successive locate() calls
+-- don't each waste a 1-2 second timeout when there are no GPS towers.
+-- Cleared by M.resetGpsCache(); auto-expires after NO_GPS_TTL seconds.
+local NO_GPS_TTL = 30
+local noGpsUntil = 0
+
+function M.resetGpsCache() noGpsUntil = 0 end
+
 -- Locate a device:
 --   locate() / locate("self") -> local gps first, then own HTTP metrics
 --   locate("<id-or-name>")    -> HTTP metrics for that device
@@ -65,9 +73,14 @@ function M.locate(target, opts)
     local isSelf = (not target) or target == "self"
 
     if isSelf and gps and not opts.http_only then
-        local x, y, z = gps.locate(tonumber(opts.timeout) or 2)
-        if x then
-            return iRound(x), iRound(y), iRound(z), "gps"
+        local now = os.epoch and (os.epoch("utc") / 1000) or os.clock()
+        if now >= noGpsUntil then
+            local x, y, z = gps.locate(tonumber(opts.timeout) or 1)
+            if x then
+                return iRound(x), iRound(y), iRound(z), "gps"
+            end
+            -- Mark gps as unavailable for a while so we stop blocking.
+            noGpsUntil = now + NO_GPS_TTL
         end
     end
 

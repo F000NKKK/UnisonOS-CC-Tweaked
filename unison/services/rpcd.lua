@@ -164,11 +164,16 @@ local function collectMetrics()
         metrics.position_source = "host"
         metrics.gpsnet.host = true
         metrics.capabilities.gps_http_host = true
-    elseif gps then
-        local x, y, z = gps.locate(0.1)
-        if x then
-            metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
-            metrics.position_source = "gps"
+    else
+        -- Use unison.lib.gps so we share its no-fix cache and don't block
+        -- every heartbeat for a full GPS timeout when there are no towers.
+        local lib = unison and unison.lib
+        if lib and lib.gps then
+            local x, y, z, src = lib.gps.locate("self", { timeout = 0.5 })
+            if x and src == "gps" then
+                metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
+                metrics.position_source = "gps"
+            end
         end
     end
     return metrics
@@ -322,14 +327,48 @@ function M.run()
             return pcall(mod.run, ctx, toks)
         end
 
+        -- Capture print/printError lines emitted while the command runs
+        -- so the caller can see actual stdout in the reply.
+        local captured = {}
+        local origPrint = _G.print
+        local origPrintError = _G.printError
+        _G.print = function(...)
+            local n = select("#", ...)
+            local parts = {}
+            for i = 1, n do parts[i] = tostring((select(i, ...))) end
+            captured[#captured + 1] = table.concat(parts, "\t")
+            return origPrint(...)
+        end
+        _G.printError = function(s)
+            captured[#captured + 1] = "[err] " .. tostring(s)
+            return origPrintError(s)
+        end
+
         local ok, err = tryBuiltin()
         if ok == nil then ok, err = tryApp() end
         if ok == nil then ok, err = false, "unknown command: " .. tostring(name) end
+
+        _G.print = origPrint
+        _G.printError = origPrintError
+
+        -- Cap output size so a runaway command can't blow up the bus.
+        local MAX_LINES, MAX_LEN = 200, 2000
+        if #captured > MAX_LINES then
+            local trimmed = {}
+            for i = #captured - MAX_LINES + 1, #captured do
+                trimmed[#trimmed + 1] = captured[i]
+            end
+            captured = trimmed
+        end
+        local outStr = table.concat(captured, "\n")
+        if #outStr > MAX_LEN * 50 then outStr = outStr:sub(-MAX_LEN * 50) end
 
         client.reply(env, {
             type = "exec_reply",
             ok = ok or false,
             err = (not ok) and tostring(err) or nil,
+            output = outStr,
+            command = msg.command,
         })
     end)
 

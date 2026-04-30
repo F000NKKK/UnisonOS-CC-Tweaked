@@ -222,6 +222,24 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="term-modal" hidden>
+  <div class="modal-card" style="width:min(1100px,98vw); height:80vh;">
+    <header style="display:flex; gap:12px; align-items:center;">
+      <h2 id="tm-title">Terminal</h2>
+      <span class="small" id="tm-status">disconnected</span>
+      <button id="tm-clear" style="margin-left:auto;">clear</button>
+      <button id="tm-close">close</button>
+    </header>
+    <div class="body" id="tm-out" style="font-size:12px; padding:8px 12px; background:var(--bg);"></div>
+    <div class="footer" style="gap:6px;">
+      <span class="small">$&gt;</span>
+      <input id="tm-input" type="text" style="flex:1;"
+             placeholder='shell command — Enter to run, ↑/↓ history' />
+      <button id="tm-send">run</button>
+    </div>
+  </div>
+</div>
+
 <div class="auth-overlay" id="auth-overlay" hidden>
   <div class="auth-card">
     <h2>UnisonOS Console</h2>
@@ -330,6 +348,7 @@
       if (m.type === 'ready') { setWsState('connected'); logLine('ws ready', 'ok'); return; }
       if (m.type === 'error') { setWsState('rejected'); logLine('ws auth: ' + m.error, 'err'); return; }
       if (m.type === 'message' && m.envelope) {
+        if (handleInbound(m.envelope)) return;
         const e = m.envelope;
         const body = e.msg || {};
         const fromId = body.from || '?';
@@ -416,6 +435,78 @@
     logLine('selected ' + id);
   }
 
+  // ---- Per-device interactive terminal -----------------------------------
+  let termTarget = null;
+  let termHistory = [];
+  let termHistIdx = 0;
+  const termHandlers = {};   // type -> handler installed in dispatch
+
+  function termOut(msg, kind) {
+    const out = $('tm-out');
+    const div = document.createElement('div');
+    div.className = 'log-line ' + (kind || '');
+    const t = new Date().toLocaleTimeString();
+    div.textContent = `[${t}] ${msg}`;
+    out.appendChild(div);
+    out.scrollTop = out.scrollHeight;
+    while (out.children.length > 1500) out.removeChild(out.firstChild);
+  }
+
+  function openTerminal(id) {
+    termTarget = id;
+    termHistory = JSON.parse(localStorage.getItem('term-hist-' + id) || '[]');
+    termHistIdx = termHistory.length;
+    $('tm-title').textContent = `Terminal — ${id}`;
+    $('tm-status').textContent = devices[id] ? 'connected' : 'unknown';
+    $('tm-out').innerHTML = '';
+    termOut('connected to ' + id + '. Type a shell command and hit Enter.', 'ok');
+    $('term-modal').hidden = false;
+    setTimeout(() => $('tm-input').focus(), 50);
+  }
+
+  function closeTerminal() {
+    $('term-modal').hidden = true;
+    termTarget = null;
+  }
+
+  async function termSend() {
+    if (!termTarget) return;
+    const input = $('tm-input');
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    termHistory.push(cmd);
+    while (termHistory.length > 200) termHistory.shift();
+    localStorage.setItem('term-hist-' + termTarget, JSON.stringify(termHistory));
+    termHistIdx = termHistory.length;
+    termOut('$> ' + cmd, 'ok');
+    input.value = '';
+    await pushMessage(termTarget, { type: 'exec', command: cmd });
+  }
+
+  // intercept exec_reply when terminal is open and pretty-print output
+  const origLogLine = (function () {
+    return logLine;
+  })();
+  // patch wsLoop dispatch — we hook into ws.onmessage handler? Easier:
+  // listen on a custom event we emit from ws.onmessage. The simpler path
+  // is wrapping the inbound message handler. We do it by adding a global
+  // function the ws handler calls — see connectWs below.
+  function handleInbound(envelope) {
+    const body = envelope.msg || {};
+    if (termTarget && body.type === 'exec_reply') {
+      if (body.output && body.output !== '') {
+        for (const line of String(body.output).split('\n')) {
+          termOut(line);
+        }
+      }
+      if (body.ok === false) {
+        termOut('error: ' + (body.err || 'failed'), 'err');
+      }
+      return true;   // consumed, don't show in main activity log
+    }
+    return false;
+  }
+
   function openDeviceDetail(id) {
     const d = devices[id];
     if (!d) return;
@@ -442,6 +533,7 @@
     const actions = $('dm-actions');
     actions.innerHTML = '';
     const buttons = [
+      { label: 'terminal', cmd: null, fn: () => { $('device-modal').hidden = true; openTerminal(id); } },
       { label: 'ping', cmd: null, fn: () => pushMessage(id, { type: 'ping' }) },
       { label: 'version', cmd: 'version' },
       { label: 'service list', cmd: 'service list' },
@@ -565,6 +657,23 @@
   });
   document.querySelectorAll('button[data-quick]').forEach(b => {
     b.addEventListener('click', () => execSelected(b.dataset.quick));
+  });
+
+  $('tm-close').addEventListener('click', closeTerminal);
+  $('tm-clear').addEventListener('click', () => { $('tm-out').innerHTML = ''; });
+  $('tm-send').addEventListener('click', termSend);
+  $('tm-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') termSend();
+    else if (e.key === 'ArrowUp') {
+      if (termHistory.length === 0) return;
+      termHistIdx = Math.max(0, termHistIdx - 1);
+      $('tm-input').value = termHistory[termHistIdx] || '';
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      termHistIdx = Math.min(termHistory.length, termHistIdx + 1);
+      $('tm-input').value = termHistory[termHistIdx] || '';
+      e.preventDefault();
+    }
   });
 
   $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y', 'OS upgrade'));
