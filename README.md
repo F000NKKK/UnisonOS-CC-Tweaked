@@ -1,195 +1,179 @@
 # UnisonOS
 
 Distributed operating system for the CC:Tweaked stack (Minecraft 1.21.1).
-Runs on Computers, Turtles, Pocket Computers, and drives Monitors.
+Runs on Computers, Turtles, Pocket Computers, and drives Monitors. Devices
+talk to each other through an HTTP/WebSocket message bus hosted on a
+self-hostable VPS.
 
-Network is built around a master node, with rednet over a mix of
-ender-modems (long range, e.g. turtles) and wireless modems (local nodes).
+## Status (current: 0.7.x)
 
-## Status
+| Phase   | Scope                                                   | Status   |
+|---------|---------------------------------------------------------|----------|
+| 1       | Installer, kernel, IPC, log, shell                      | done     |
+| 2       | Crypto, transport, signed protocol                      | done     |
+| 3       | UPM (package manager), `mine` migrated as a package     | done     |
+| 4       | Service manager (systemd-style units, supervision)      | done     |
+| 5.1     | HTTP-RPC over a VPS message bus                         | done     |
+| 5.2     | Sandboxed apps with permission gating                   | done     |
+| 5.3     | TUI framework (windows, widgets, monitor mirroring)     | done     |
+| 6.0     | OS / packages decoupled (`min_platform`)                | done     |
+| 6.1     | Cron / scheduled tasks                                  | done     |
+| 6.2     | WebSocket transport (real-time bus, polling fallback)   | done     |
+| 7.x     | Login + accounts, central state backup                  | pending  |
 
-**Phase 3 — Unison Packet Manager (UPM).** OS now ships only OS primitives
-plus UPM. Apps (including `mine`) are fetched from a configurable list of
-HTTP sources (default: VPS at `upm.hush-vp.ru`, GitHub raw as fallback).
+## Quick install
 
-| Phase | Scope                                              | Status      |
-|-------|----------------------------------------------------|-------------|
-| 1     | Installer, kernel, IPC, log, shell                 | done        |
-| 2     | Crypto, transport, signed protocol                 | done        |
-| 3     | UPM, package layout, mine migrated as a package    | done        |
-| 4     | Service manager (systemd-style units, supervision) | done        |
-| 5.1   | HTTP-RPC via VPS message bus                       | done        |
-| 5.2   | Sandboxed apps (permissions enforced)              | done        |
-| 5.3   | TUI framework (windows, widgets)                   | done        |
-| 6.0   | OS / packages decoupled (min_platform gate)        | done        |
-| 6.1   | Cron / scheduled tasks                             | pending     |
-| 6.2   | Login + accounts                                   | pending     |
-
-## Network
-
-UnisonOS runs a daemon (`netd`) at boot. It opens every attached modem
-(wireless and ender) on channel 4717 and exchanges packets in the
-following format:
+On a fresh CC:Tweaked computer / turtle / pocket:
 
 ```
-{ v=1, id, from, to, ts, nonce, type, payload, sig }
+wget run http://upm.hush-vp.ru:9273/installer.lua
+reboot
 ```
 
-Signatures are HMAC-SHA256 over a canonical serialization of every field
-except `sig`. Replays are rejected by a per-sender nonce cache and a
-configurable timestamp window (default ±60s).
+(or `pastebin run hmQKeNia` if you keep the installer there).
 
-### Enrollment flow
+The installer fetches `manifest.json` from the configured sources, picks
+the file set for the device's role (turtle / pocket / computer), drops
+everything into `/unison/`, copies `config.lua.example` to `config.lua`,
+and writes `/startup.lua`. Reboot to enter UnisonOS.
 
-1. A fresh non-master node generates an enrollment code (8 chars) and shows
-   it on screen at boot. It broadcasts an unsigned `ENROLL_REQ` carrying a
-   hashed copy of the code every 3 seconds.
-2. On master, the admin reads the code from the node's screen and runs
-   `enroll <code>`. Master derives `node_key = HMAC(master_secret, node_id)`
-   and sends an `ENROLL_ACK` signed with `bootstrap_key = HMAC(code, "...")`.
-   The ACK carries `node_key` XOR-streamed against the bootstrap key.
-3. The node verifies the ACK signature and decrypts `node_key`, then saves
-   it locally. From then on every packet is signed with `node_key`.
+After first boot edit `/unison/config.lua` (typically: `is_master`,
+`master.secret`, optional `pm_sources`), then `reboot`.
 
-`master.secret` (in `/unison/config.lua`) must be set on master before
-the first boot.
+## Configuration cheat sheet
 
-## Installer disk (auto-updating)
+`/unison/config.lua` (full schema in `unison/config.lua.example`):
 
-UnisonOS can keep a labelled installer floppy in sync automatically.
+```lua
+return {
+    is_master   = false,                  -- exactly one master per network
+    node_name   = nil,                    -- override "<role>-<id>"
+    log_level   = "INFO",                 -- TRACE/DEBUG/INFO/WARN/ERROR
+    auto_update = false,                  -- OS upgrades only on `upm upgrade`
 
-1. On any UnisonOS device, attach a Disk Drive (any side) and insert a
-   floppy. Set its label to `UnisonOS-Installer` via:
+    pm_sources = {
+        "http://upm.hush-vp.ru:9273",     -- custom VPS first
+        "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
+    },
 
-   ```
-   label set <side> UnisonOS-Installer
-   ```
+    network = {
+        protocol = "unison/1",
+        heartbeat_interval = 5,
+    },
 
-2. From an existing UnisonOS shell run `diskupdate`, or wait up to 60s for
-   the background `disk-updater` service to detect it. The disk is
-   populated with `installer.lua`, `manifest.json`, and a smart
-   `startup.lua`.
-3. The smart `startup.lua` checks the locally installed version against the
-   disk's manifest and **only runs the installer when versions differ**, so
-   leaving the disk in the drive no longer causes a reinstall loop.
+    master = {
+        secret = "CHANGE_ME_BEFORE_FIRST_BOOT",  -- HMAC root for enroll
+    },
 
-## Install
-
-On a fresh device, paste the contents of `installer.lua` into a Pastebin and
-run it. Then on the device:
-
+    displays = { mirror_all = true, monitors = {} },
+}
 ```
-pastebin run <ID>
-```
-
-Or, if `wget` is enabled in your CC config:
-
-```
-wget run https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master/installer.lua
-```
-
-The installer will:
-
-1. Fetch `manifest.json`.
-2. Detect the device role (turtle / pocket / computer).
-3. Download the files needed for that role into `/unison/`.
-4. Copy `config.lua.example` to `config.lua` if missing.
-5. Write `/startup.lua` so the OS boots automatically.
-
-Reboot to enter UnisonOS.
-
-## Configuration
-
-Edit `/unison/config.lua` after the first install:
-
-- `is_master = true` for exactly one device on the network.
-- `node_name` to override the default `<role>-<id>` name.
-- `master.secret` — change before the first boot of master.
-- `log_level`, `log_to_master`, `auto_update` — sensible defaults are set.
-
-See `unison/config.lua.example` for the full schema.
 
 ## Shell
 
-After boot you get a prompt:
+Prompt shows the node name and current working directory:
 
 ```
-[turtle-3]$ help
+[turtle-3 /]$ help
 ```
 
-Built-in commands (Phase 1):
+| Command       | Description                                       |
+|---------------|---------------------------------------------------|
+| `help [c]`    | List commands or describe one                     |
+| `version`     | OS version and node info                          |
+| `ps`          | List kernel processes                             |
+| `kill <pid>`  | Terminate a process                               |
+| `cd / ls`     | Change / list directory                           |
+| `cat <p>`     | Print a file                                      |
+| `tail [-n][-f] <p>` | Tail (with optional follow) a log file      |
+| `nano <p>`    | Edit a file with the built-in CC editor           |
+| `echo <args>` | Print arguments                                   |
+| `run <a>`     | Run an app or `.lua` path                         |
+| `clear`       | Clear screen                                      |
+| `reboot`      | Reboot                                            |
+| `hardreset`   | Wipe apps/logs/state, keep auth tokens, reboot    |
+| `netstat`     | Local rednet transport state                      |
+| `displays`    | Manage attached monitors (mirror / scale / bg)    |
+| `apitoken`    | `set/show/clear` the VPS API token                |
+| `upm`         | Package manager (see below)                       |
+| `service`     | Manage system services (`list/status/start/stop/restart`) |
+| `cron`        | Manage scheduled tasks (`list/run/reload`)        |
+| `devices`     | List devices on the VPS message bus               |
+| `rsend <id> <type> [k=v]...` | Send a JSON message to a device    |
+| `rexec <id> <cmd...>` | Run a shell command on a remote device    |
 
-| Command   | Description                          |
-|-----------|--------------------------------------|
-| `help`    | List commands or describe one        |
-| `version` | Show UnisonOS version and node info  |
-| `ps`      | List running processes               |
-| `run`     | Run an installed app or .lua file    |
-| `kill`    | Terminate a process by PID           |
-| `clear`   | Clear the screen                     |
-| `reboot`  | Reboot the device                    |
-| `netstat` | Modem/transport state, neighbors     |
-| `update`  | Check / apply OS update              |
-| `diskupdate` | Refresh attached installer disk now |
-| `displays` | Manage attached monitors             |
-| `upm`     | Install/manage packages              |
-| `service` | Manage system services               |
-| `devices` | List devices on the message bus      |
-| `rsend`   | Send a typed message to a device     |
-| `rexec`   | Run a shell command on a remote device |
+Installed packages also become callable as bare commands: `sysmon`, `pilot 0`,
+`mine 64` — `run` is the explicit form for both packages and ad-hoc files.
+
+### Multi-monitor
+
+UnisonOS auto-discovers every attached monitor at boot and mirrors the
+terminal output to all of them by default (the `display` service builds a
+multiplexed `term`). Per-monitor settings persist in
+`/unison/state/display.lua`:
+
+```
+displays list
+displays disable monitor_1
+displays scale monitor_2 0.5
+displays bg monitor_0 black
+```
 
 ## Packages (UPM)
 
-UnisonOS ships with `upm`, a tiny HTTP-based package manager. Sources are
-defined per device in `/unison/config.lua`:
+`upm` is a tiny HTTP-based package manager. Apps live in a separate space
+from OS code so they version independently:
 
-```lua
-pm_sources = {
-    "http://upm.hush-vp.ru:9273",
-    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
-},
+```
+upm search <q>            search the registry
+upm info <name>           manifest, version list, min_platform, source
+upm install <name>[@v]    download into /unison/apps/<name>/
+upm list                  installed packages
+upm remove <name>         uninstall
+upm update [<name>]       refresh one or all installed packages
+upm upgrade [-y]          check & apply an OS upgrade (with confirmation)
+upm upgrade -d [-y]       refresh attached UnisonOS-Installer disk
+upm sources               configured sources, in order
 ```
 
-Each source serves the registry at `<base>/apps/registry.json` and packages
-at `<base>/apps/packages/<name>/<version>/...`. Sources are tried in order;
-the first that responds wins.
+The OS upgrade is **two-phase**:
 
-| Command                  | Effect                                |
-|--------------------------|---------------------------------------|
-| `upm search <q>`         | search the registry                   |
-| `upm info <name>`        | show package details                  |
-| `upm install <name>[@v]` | download into `/unison/apps/<name>/`  |
-| `upm list`               | installed packages                    |
-| `upm remove <name>`      | uninstall                             |
-| `upm update [<name>]`    | refresh one or all                    |
-| `upm sources`            | show configured sources               |
+1. `upm upgrade` stages every file under `/unison.staging/` and writes a
+   `/unison/.pending-commit` marker, then reboots.
+2. `boot.lua` notices the marker, commits the staged files into `/unison/`,
+   removes obsolete files, writes the new `/unison/.version`, removes the
+   marker, and reboots one more time.
 
-Run an installed app with `run <name> [args...]`. Apps live in
-`/unison/apps/<name>/main.lua` (or whatever `entry` is in their manifest).
+This avoids any "the OS is overwriting itself while running" hazard. Auth
+tokens, logs, configs, installed apps, and the package registry under
+`/unison/{state,logs,apps,config.lua,pm/installed.lua}` are preserved
+across upgrades.
 
-### OS vs. package independence
+### `min_platform` gate
 
-UnisonOS itself and the package catalogue live side-by-side in this repo
-but are **versioned and updated independently**:
+A package manifest can declare:
 
-* `manifest.json` — OS file list, role mapping, OS version. Changes here
-  (and only here) ship through `upm upgrade`.
-* `apps/registry.json` + `apps/packages/<name>/<ver>/...` — packages.
-  Changes here ship through `upm install` / `upm update <name>`. They
-  never touch `/unison/*` system code and never trigger a reboot.
+```lua
+return {
+    name = "pilot",
+    version = "1.0.2",
+    min_platform = "0.7.6",
+    permissions = { "rpc", "turtle", "fuel", "inventory" },
+    files = { "main.lua" },
+    entry = "main.lua",
+}
+```
 
-Each package manifest may declare `min_platform = "X.Y.Z"`. UPM refuses
-to install a package whose `min_platform` is newer than the running OS
-and tells the user to `upm upgrade` first. So you can publish app
-updates as often as you like without bumping the OS, and the OS only
-gets bumped for actual platform changes.
+UPM refuses to install if the running OS is older. Push package updates as
+often as you like; only bump the OS for real platform changes.
 
 ### Sandbox / permissions
 
-Packages run inside a sandbox `_ENV` built from their manifest's
-`permissions` list. Without explicit permission, an app only sees the pure-
-Lua stdlib, `sleep`, a safe subset of `term`, and `unison.{log, role, node,
-id, version, permissions}`. Recognised permissions:
+Packaged apps run inside a sandbox `_ENV` built from their `permissions`
+list. Without an explicit permission an app only sees pure-Lua stdlib,
+`sleep`, a safe subset of `term`/`os`, `printError`, and
+`unison.{log, role, node, id, version, kernel.services, ui.*, permissions}`.
+Recognised permissions:
 
 | Permission   | Grants                                              |
 |--------------|-----------------------------------------------------|
@@ -197,32 +181,175 @@ id, version, permissions}`. Recognised permissions:
 | `fuel`       | alias for `turtle`                                  |
 | `inventory`  | alias for `turtle`                                  |
 | `peripheral` | full `peripheral.*`                                 |
-| `modem`      | `peripheral.*`, restricted to modems                |
-| `redstone`   | `rs` and `redstone` globals                         |
+| `modem`      | `peripheral.*`, restricted to modem peripherals     |
+| `redstone`   | `rs` and `redstone`                                 |
 | `gps`        | `gps`                                               |
-| `fs`         | full filesystem (`fs.*`)                            |
+| `fs`         | full `fs.*`                                         |
 | `fs.read`    | read-only filesystem                                |
 | `http`       | `http.*` (raw HTTP)                                 |
-| `rpc`        | `unison.rpc` (the message bus client)               |
+| `rpc`        | `unison.rpc` (the message bus client + `on`/`off`)  |
 | `shell`      | `shell.run`, `shell.openTab`                        |
 | `term`       | full `term.*`                                       |
 | `all`        | escape hatch — full host environment                |
 
-Ad-hoc Lua files passed to `run /path/to/foo.lua` keep full access (the user
-typed them). Sandbox only kicks in for packaged apps.
+Ad-hoc Lua files passed to `run /path/to/foo.lua` keep full access (you
+typed them).
+
+A restricted `dofile` is available regardless: it can `dofile` any
+`/unison/*` path so apps can pull in `/unison/ui/wm.lua` etc.
+
+### Built-in apps
+
+Available in `apps/registry.json` (default registry):
+
+* **`mine`** — vertical mining shaft for turtles.
+* **`sysmon`** — TUI dashboard listing services and registered devices.
+* **`pilot`** — remote-control a turtle from any computer over the bus
+  (forward/back/up/down, dig, place, refuel, sel, info, …).
+
+## Services
+
+Every background unit is declared in `/unison/services.d/<name>.lua` and
+managed by the kernel service manager (similar to systemd):
+
+```lua
+return {
+    name = "rpcd",
+    description = "HTTP RPC daemon (registers with VPS, polls + WebSocket)",
+    enabled = true,
+    deps = {},
+    restart = "on-failure",   -- no | on-failure | always
+    restart_sec = 10,
+    pre_start = function(cfg) ... end,    -- runs synchronously
+    main = function(cfg) ... end,         -- spawned as a kernel coroutine
+}
+```
+
+Built-in units that ship with the OS:
+
+| Unit            | Purpose                                                      |
+|-----------------|--------------------------------------------------------------|
+| `display`       | Multi-monitor mirroring                                      |
+| `netd`          | Optional local rednet/HMAC stack (legacy)                    |
+| `disk-updater`  | Refresh `UnisonOS-Installer` floppies attached to the device |
+| `os-updater`    | Periodic upstream-manifest check (idle by default)           |
+| `rpcd`          | HTTP/WebSocket message-bus client                            |
+| `crond`         | Scheduled tasks from `/unison/cron.d/<name>.lua`             |
+| `shell`         | Interactive shell                                            |
+
+`service list / status / start / stop / restart` operate on these.
+
+## Cron
+
+Drop a unit at `/unison/cron.d/<name>.lua`:
+
+```lua
+return {
+    name = "ping-3",
+    description = "Periodically poke turtle 3",
+    enabled = true,
+    every_seconds = 30,
+    run_at_boot = true,
+    command = "rsend 3 ping",   -- shell command, OR
+    -- run = function() ... end, -- inline Lua
+}
+```
+
+`cron list / run <name> / reload` from the shell.
+
+## Message bus
+
+`rpcd` registers the device with the VPS at boot. Once registered every
+device shows up in `devices` and is reachable by its `os.getComputerID()`:
+
+```
+[mc-pc /]$ devices
+ID           ROLE       VER     SEEN  NAME
+0            computer   0.7.6   2s    computer-0
+3            turtle     0.7.6   1s    turtle-3
+```
+
+Send a JSON message:
+
+```
+[mc-pc /]$ rsend 3 ping
+[mc-pc /]$ rexec 3 mine 32
+```
+
+`rpcd` keeps a WebSocket open to the VPS (port 9275 / 9276) for real-time
+delivery and falls back to HTTP polling automatically when the WS is down.
+Apps subscribe via `unison.rpc.on(type, fn)` and send via
+`unison.rpc.send(target, msg)`.
+
+The bus token (shared with the VPS) is stored at
+`/unison/state/api_token`. Manage with `apitoken set/show/clear`.
+
+## Installer disk (auto-updating)
+
+Any UnisonOS device with an attached Disk Drive holding a floppy labelled
+`UnisonOS-Installer` will keep the disk in sync with upstream:
+
+```
+label set <side> UnisonOS-Installer
+upm upgrade -d           # one-shot refresh, with confirmation
+```
+
+The smart `disk/startup.lua` only triggers an installer run on a *fresh*
+device (no `/unison/boot.lua` present) and even then asks for an explicit
+`yes` before installing or rebooting — leaving the disk in a drive never
+loops.
+
+## Self-hosted VPS server
+
+`tools/repo-server/` ships everything needed to host the package and
+message-bus endpoints on a Debian/Ubuntu VPS — no nginx, no Caddy, just
+Python 3 + systemd:
+
+* `serve.py` — HTTP on 9273, HTTPS on 9274, WebSocket on 9275/9276.
+* `unison-sync.{sh,service,timer}` — git-pull the upstream repo into
+  `/srv/unison/` every 2 minutes.
+* `unison-cert-issue.sh` — Let's Encrypt cert via Cloudflare DNS-01
+  (CC:Tweaked trusts LE out of the box, so HTTPS/WSS work end-to-end).
+* `setup.sh` — one-shot installer.
+
+```bash
+export UNISON_DOMAIN=your.domain.tld
+curl -fsSL https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master/tools/repo-server/setup.sh | bash
+```
+
+API auth (optional): drop a token in `/etc/unison/api.token` and put the
+same string into each device's `/unison/state/api_token` (via
+`apitoken set <token>`).
+
+See `tools/repo-server/README.md` for the long version.
 
 ## Repo layout
 
-See `docs/` for protocol, app format, and security model
-(populated as later phases land).
-
 ```
-installer.lua          # bootstrap (also goes on Pastebin)
-manifest.json          # which files belong to which role
+installer.lua            bootstrap installer (also pinned on Pastebin)
+disk_startup.lua         smart /disk/startup.lua deployed to install floppies
+manifest.json            OS file list and role mapping
+apps/
+  registry.json          package catalogue
+  packages/<name>/<v>/   per-version files
 unison/
-  boot.lua             # entry point
-  config.lua.example   # config template
-  kernel/              # scheduler, IPC, log, role detection
-  shell/               # REPL and built-in commands
-  ...                  # net/, crypto/, pm/, metrics/, dashboard/, master/, apps/
+  boot.lua               entry point + two-phase upgrade committer
+  config.lua.example     config template
+  kernel/                init, scheduler, ipc, log, role, services, sandbox
+  crypto/                sha256, hmac
+  net/                   transport, protocol, auth, enroll, router, netd
+  pm/                    UPM internals (sources, registry, installer)
+  rpc/                   HTTP+WS bus client
+  services/              service implementations (rpcd, crond, ...)
+  services.d/            declarative service unit files
+  cron.d/                cron unit drop directory (initially empty)
+  ui/                    TUI buffer / window manager / widgets
+  shell/                 REPL and built-in commands
+tools/
+  repo-server/           VPS-side server kit
 ```
+
+## License & contact
+
+MIT-spirit; do whatever you want. Bug reports / PRs welcome at
+[github.com/F000NKKK/UnisonOS-CC-Tweaked](https://github.com/F000NKKK/UnisonOS-CC-Tweaked).
