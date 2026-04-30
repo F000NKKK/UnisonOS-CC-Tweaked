@@ -1,33 +1,22 @@
 -- UPM installer: fetches a package from configured sources and lays out
 -- /unison/apps/<name>/<files>.
 
-local sources = dofile("/unison/pm/sources.lua")
+local sources  = dofile("/unison/pm/sources.lua")
 local registry = dofile("/unison/pm/registry.lua")
 local role_lib = dofile("/unison/kernel/role.lua")
-local log = dofile("/unison/kernel/log.lua")
+local log      = dofile("/unison/kernel/log.lua")
+local fsLib    = dofile("/unison/lib/fs.lua")
+local jsonLib  = dofile("/unison/lib/json.lua")
+local semver   = dofile("/unison/lib/semver.lua")
 
 local M = {}
 
 local APPS_DIR = "/unison/apps"
 
-local function ensureDir(p) if not fs.exists(p) then fs.makeDir(p) end end
-
-local function writeFile(p, content)
-    local d = fs.getDir(p)
-    if d ~= "" and not fs.exists(d) then fs.makeDir(d) end
-    local h = fs.open(p, "w")
-    if not h then return false end
-    h.write(content)
-    h.close()
-    return true
-end
-
 local function parseManifest(raw)
     local loader = load or loadstring
     local fn, err = loader(raw, "manifest", "t")
-    if not fn then
-        fn, err = loader(raw, "manifest")
-    end
+    if not fn then fn, err = loader(raw, "manifest") end
     if not fn then return nil, err end
     local ok, t = pcall(fn)
     if not ok or type(t) ~= "table" then return nil, "manifest is not a table" end
@@ -37,41 +26,23 @@ local function parseManifest(raw)
     return t
 end
 
-local function parseSemver(v)
-    if type(v) ~= "string" then return { 0, 0, 0 } end
-    local out = {}
-    for n in v:gmatch("(%d+)") do out[#out + 1] = tonumber(n) end
-    while #out < 3 do out[#out + 1] = 0 end
-    return out
-end
-
-local function semverCompare(a, b)
-    local pa, pb = parseSemver(a), parseSemver(b)
-    for i = 1, math.max(#pa, #pb) do
-        local x, y = pa[i] or 0, pb[i] or 0
-        if x < y then return -1 elseif x > y then return 1 end
-    end
-    return 0
-end
-
 local function platformVersion()
     return (UNISON and UNISON.version) or "0.0.0"
 end
 
 local function checkPlatformGate(m)
     if not m.min_platform then return true end
-    local current = platformVersion()
-    if semverCompare(current, m.min_platform) >= 0 then return true end
+    if semver.gte(platformVersion(), m.min_platform) then return true end
     return false, string.format(
         "package requires UnisonOS >= %s (you have %s). Run 'upm upgrade' first.",
-        m.min_platform, current)
+        m.min_platform, platformVersion())
 end
 
 function M.fetchRegistry()
     local raw, src = sources.fetchRegistry()
     if not raw then return nil, src end
-    local ok, t = pcall(textutils.unserializeJSON, raw)
-    if not ok or type(t) ~= "table" then return nil, "bad registry" end
+    local t = jsonLib.decode(raw)
+    if not t then return nil, "bad registry" end
     return t, src
 end
 
@@ -126,23 +97,18 @@ function M.install(name, version)
     if not platOk then return false, platErr end
 
     local target = APPS_DIR .. "/" .. name
-    if fs.exists(target) then fs.delete(target) end
-    ensureDir(APPS_DIR)
-    ensureDir(target)
+    fsLib.deleteIf(target)
+    fsLib.ensureDir(APPS_DIR)
+    fsLib.ensureDir(target)
 
-    local writeManifest = "return " .. textutils.serialize(m)
-    if not writeFile(target .. "/manifest.lua", writeManifest) then
+    if not fsLib.writeLua(target .. "/manifest.lua", m) then
         return false, "failed writing manifest"
     end
 
     for _, file in ipairs(m.files) do
         local body, ferr = sources.fetchPackageFile(name, version, file)
-        if not body then
-            return false, "fetch " .. file .. ": " .. tostring(ferr)
-        end
-        if not writeFile(target .. "/" .. file, body) then
-            return false, "write " .. file
-        end
+        if not body then return false, "fetch " .. file .. ": " .. tostring(ferr) end
+        if not fsLib.write(target .. "/" .. file, body) then return false, "write " .. file end
     end
 
     registry.put(name, {
@@ -160,8 +126,7 @@ end
 function M.remove(name)
     local entry = registry.get(name)
     if not entry then return false, "not installed" end
-    local target = APPS_DIR .. "/" .. name
-    if fs.exists(target) then fs.delete(target) end
+    fsLib.deleteIf(APPS_DIR .. "/" .. name)
     registry.remove(name)
     log.info("upm", "removed " .. name)
     return true

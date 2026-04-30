@@ -1,27 +1,18 @@
--- Local registry of installed UPM packages.
--- Persisted at /unison/pm/installed.lua as a Lua table:
---   { mine = { version = "1.0.0", files = {...}, installed_at = ... } }
+-- Local registry of installed UPM packages. Persisted as a Lua return-table
+-- at /unison/pm/installed.lua.
+
+local fsLib = dofile("/unison/lib/fs.lua")
 
 local M = {}
 
-local PM_DIR = "/unison/pm"
-local STATE_FILE = PM_DIR .. "/installed.lua"
-
-local function ensureDir() if not fs.exists(PM_DIR) then fs.makeDir(PM_DIR) end end
+local STATE_FILE = "/unison/pm/installed.lua"
 
 function M.load()
-    if not fs.exists(STATE_FILE) then return {} end
-    local fn = loadfile(STATE_FILE)
-    if not fn then return {} end
-    local ok, t = pcall(fn)
-    return (ok and type(t) == "table") and t or {}
+    return fsLib.readLua(STATE_FILE) or {}
 end
 
 function M.save(state)
-    ensureDir()
-    local h = fs.open(STATE_FILE, "w")
-    h.write("return " .. textutils.serialize(state))
-    h.close()
+    return fsLib.writeLua(STATE_FILE, state)
 end
 
 function M.get(name)

@@ -1,9 +1,7 @@
--- Source resolution for UPM.
---
--- Sources are HTTP base URLs. The registry lives at <base>/apps/registry.json,
--- packages at <base>/apps/packages/<name>/<version>/<file>. Sources are tried
--- in order; the first that responds wins.
+-- UPM source resolution. Sources are HTTP base URLs; the registry lives at
+-- <base>/apps/registry.json, packages at <base>/apps/packages/<n>/<v>/<f>.
 
+local httpLib = dofile("/unison/lib/http.lua")
 local log = dofile("/unison/kernel/log.lua")
 
 local DEFAULT_SOURCES = {
@@ -20,33 +18,16 @@ function M.list()
     return DEFAULT_SOURCES
 end
 
-local function fetchUrl(url)
-    if not http then return nil, "http disabled" end
-    local sep = url:find("?", 1, true) and "&" or "?"
-    local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
-    local headers = { ["Cache-Control"] = "no-cache", ["Pragma"] = "no-cache" }
-    local r, err = http.get(bust, headers)
-    if not r then return nil, "http error: " .. tostring(err) end
-    local code = r.getResponseCode and r.getResponseCode() or 200
-    if code >= 400 then r.close(); return nil, "http " .. code end
-    local body = r.readAll()
-    r.close()
-    return body
-end
-
 function M.fetchOne(url)
-    return fetchUrl(url)
+    return httpLib.get(url)
 end
 
 function M.fetchRel(rel)
-    local lastErr
-    for _, base in ipairs(M.list()) do
-        local body, err = fetchUrl(base .. "/" .. rel)
-        if body then return body, base end
-        lastErr = err
-        log.debug("upm", "source " .. base .. " failed for " .. rel .. ": " .. tostring(err))
+    local body, srcOrErr = httpLib.getFromSources(M.list(), rel)
+    if not body then
+        log.debug("upm", "fetch " .. rel .. ": " .. tostring(srcOrErr))
     end
-    return nil, lastErr or "all sources failed"
+    return body, srcOrErr
 end
 
 function M.fetchRegistry()

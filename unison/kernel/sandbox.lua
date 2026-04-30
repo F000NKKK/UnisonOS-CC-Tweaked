@@ -140,6 +140,12 @@ local function lazy(loader)
     })
 end
 
+local _libCache
+local function libModule()
+    if not _libCache then _libCache = dofile("/unison/lib/init.lua") end
+    return _libCache
+end
+
 local function appUnison()
     local u = {
         role = unison and unison.role,
@@ -153,6 +159,10 @@ local function appUnison()
     u.kernel = {
         services = unison and unison.kernel and unison.kernel.services,
     }
+    -- Common utility library — fs/http/json/semver/path. Available to every
+    -- app regardless of permissions; capabilities (like raw http) are still
+    -- gated separately, lib.* just provides convenience wrappers.
+    u.lib = libModule()
     -- UI framework, lazy-loaded so apps that don't draw don't pay the cost.
     u.ui = {
         buffer  = lazy(function() return dofile("/unison/ui/buffer.lua") end),

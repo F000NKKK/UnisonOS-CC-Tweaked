@@ -1,24 +1,16 @@
--- Disk auto-updater: scans every N seconds for an attached disk drive holding
--- a floppy labelled "UnisonOS-Installer", refreshes its installer.lua,
--- manifest.json and startup.lua from the upstream raw URLs.
+-- Disk auto-updater: every CHECK_INTERVAL seconds scans for an attached
+-- floppy labelled "UnisonOS-Installer" and refreshes its installer.lua,
+-- manifest.json, and startup.lua from the configured pm sources.
 
-local log = dofile("/unison/kernel/log.lua")
+local log     = dofile("/unison/kernel/log.lua")
+local httpLib = dofile("/unison/lib/http.lua")
+local fsLib   = dofile("/unison/lib/fs.lua")
+local sources_mod = dofile("/unison/pm/sources.lua")
 
 local M = {}
 
 local DISK_LABEL = "UnisonOS-Installer"
 local CHECK_INTERVAL = 60
-local SOURCES = {
-    "http://upm.hush-vp.ru:9273",
-    "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
-}
-
-local function activeSources()
-    if unison and unison.config and type(unison.config.pm_sources) == "table" then
-        return unison.config.pm_sources
-    end
-    return SOURCES
-end
 
 local FILES = {
     { remote = "installer.lua",    on_disk = "installer.lua" },
@@ -26,43 +18,8 @@ local FILES = {
     { remote = "disk_startup.lua", on_disk = "startup.lua"   },
 }
 
-local function fetchUrl(url)
-    if not http then return nil, "http disabled" end
-    local sep = url:find("?", 1, true) and "&" or "?"
-    local bust = url .. sep .. "_=" .. tostring(os.epoch("utc"))
-    local headers = { ["Cache-Control"] = "no-cache", ["Pragma"] = "no-cache" }
-    local r, err = http.get(bust, headers)
-    if not r then return nil, "http error: " .. tostring(err) end
-    local code = r.getResponseCode and r.getResponseCode() or 200
-    if code >= 400 then r.close(); return nil, "http " .. code end
-    local body = r.readAll()
-    r.close()
-    return body
-end
-
 local function fetch(rel)
-    for _, base in ipairs(activeSources()) do
-        local body, err = fetchUrl(base .. "/" .. rel)
-        if body then return body end
-        log.debug("disk-updater", "source " .. base .. " failed: " .. tostring(err))
-    end
-    return nil, "all sources failed"
-end
-
-local function readFile(p)
-    if not fs.exists(p) then return nil end
-    local h = fs.open(p, "r")
-    local s = h.readAll()
-    h.close()
-    return s
-end
-
-local function writeFile(p, content)
-    local h = fs.open(p, "w")
-    if not h then return false end
-    h.write(content)
-    h.close()
-    return true
+    return httpLib.getFromSources(sources_mod.list(), rel)
 end
 
 local function findDisks()
@@ -72,9 +29,7 @@ local function findDisks()
             local label = peripheral.call(name, "getDiskLabel")
             if label == DISK_LABEL then
                 local mount = peripheral.call(name, "getMountPath")
-                if mount then
-                    out[#out + 1] = { drive = name, root = "/" .. mount }
-                end
+                if mount then out[#out + 1] = { drive = name, root = "/" .. mount } end
             end
         end
     end
@@ -90,9 +45,9 @@ local function refreshDisk(disk)
             return false, err
         end
         local target = disk.root .. "/" .. f.on_disk
-        local current = readFile(target)
+        local current = fsLib.read(target)
         if current ~= body then
-            if writeFile(target, body) then
+            if fsLib.write(target, body) then
                 changed = changed + 1
                 log.info("disk-updater", "updated " .. target)
             else
@@ -109,7 +64,7 @@ function M.runOnce()
     local total = 0
     for _, d in ipairs(disks) do
         local ok, changed = refreshDisk(d)
-        if ok then total = total + changed end
+        if ok then total = total + (changed or 0) end
     end
     return total
 end
