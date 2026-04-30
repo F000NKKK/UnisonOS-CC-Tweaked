@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "phase": 10,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -54,6 +54,7 @@
       "unison/services/rpcd.lua",
       "unison/services/gps_host.lua",
       "unison/services/crond.lua",
+      "unison/services/sshd.lua",
       "unison/services.d/display.lua",
       "unison/services.d/netd.lua",
       "unison/services.d/disk-updater.lua",
@@ -62,6 +63,7 @@
       "unison/services.d/rpcd.lua",
       "unison/services.d/gps-host.lua",
       "unison/services.d/crond.lua",
+      "unison/services.d/sshd.lua",
       "unison/shell/shell.lua",
       "unison/shell/path.lua",
       "unison/shell/commands/help.lua",
@@ -98,7 +100,9 @@
       "unison/shell/commands/ls.lua",
       "unison/shell/commands/cat.lua",
       "unison/shell/commands/tail.lua",
-      "unison/shell/commands/nano.lua"
+      "unison/shell/commands/nano.lua",
+      "unison/apps/ssh/manifest.lua",
+      "unison/apps/ssh/main.lua"
     ],
     "master": [],
     "turtle": [],

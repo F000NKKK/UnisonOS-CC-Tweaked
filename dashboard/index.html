@@ -472,6 +472,8 @@
 
   let termTarget = null;
   let termSubTimer = null;
+  let termWatchdog = null;
+  let termGotFrame = false;
   let termDims = { w: 0, h: 0 };
   let termCur = { x: 0, y: 0 };
 
@@ -567,14 +569,23 @@
 
   function openTerminal(id) {
     termTarget = id;
+    termGotFrame = false;
+    termDims = { w: 0, h: 0 };
     $('tm-title').textContent = `Terminal — ${id}`;
-    $('tm-status').textContent = devices[id] ? 'mirroring…' : 'unknown';
+    $('tm-status').textContent = 'connecting…';
     $('tm-grid').innerHTML = '';
-    lastFrameW = 0; lastFrameH = 0;
+    // Pre-render default CC terminal (51x19) so the modal isn't 1px tall.
+    ensureGrid(51, 19);
     $('term-modal').hidden = false;
     termSubscribe();
     if (termSubTimer) clearInterval(termSubTimer);
     termSubTimer = setInterval(termSubscribe, 15000);   // renew TTL
+    if (termWatchdog) clearTimeout(termWatchdog);
+    termWatchdog = setTimeout(() => {
+      if (!termGotFrame) {
+        $('tm-status').textContent = 'no response — needs sshd ≥ 0.10.3 (run: upgrade os && reboot)';
+      }
+    }, 3000);
     setTimeout(() => $('tm-grid').focus(), 50);
   }
 
@@ -584,6 +595,8 @@
     }
     $('term-modal').hidden = true;
     if (termSubTimer) { clearInterval(termSubTimer); termSubTimer = null; }
+    if (termWatchdog) { clearTimeout(termWatchdog); termWatchdog = null; }
+    termGotFrame = false;
     termTarget = null;
   }
 
@@ -643,9 +656,12 @@
     const body = envelope.msg || {};
     if (termTarget && body.type === 'ssh_frame') {
       termRender(body);
+      termGotFrame = true;
+      if (termWatchdog) { clearTimeout(termWatchdog); termWatchdog = null; }
       const w = (body.frame && body.frame.w) || body.w || termDims.w;
       const h = (body.frame && body.frame.h) || body.h || termDims.h;
-      $('tm-status').textContent = 'mirroring (' + w + 'x' + h + ')';
+      const kind = body.full ? 'full' : (body.diff ? 'diff' : 'frame');
+      $('tm-status').textContent = 'live ' + w + '×' + h + ' (' + kind + ')';
       return true;
     }
     return false;

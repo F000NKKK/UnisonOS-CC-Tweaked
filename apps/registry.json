@@ -75,8 +75,8 @@
       "path": "packages/scanner"
     },
     "ssh": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.0.1",
+      "versions": ["1.0.0", "1.0.1"],
       "description": "Share / control a device's terminal over the bus (server + client)",
       "author": "F000NKKK",
       "roles": ["any"],
