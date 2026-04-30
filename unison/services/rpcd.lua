@@ -70,7 +70,13 @@ function M.run()
     if err then log.warn("rpcd", "register failed: " .. tostring(err))
     else log.info("rpcd", "registered as " .. tostring(os.getComputerID())) end
 
-    -- expose the client for apps and shell commands
+    -- expose the client for apps and shell commands. Bolt the daemon's
+    -- subscription API onto the client so apps can register handlers via
+    -- unison.rpc.on(type, fn) without touching rpcd directly.
+    client.on  = M.on
+    client.off = function(msgType)
+        handlers[msgType] = nil
+    end
     unison.rpc = client
 
     -- built-in handlers
