@@ -9,4 +9,6 @@ return {
     kvstore = dofile("/unison/lib/kvstore.lua"),
     canvas  = dofile("/unison/lib/canvas.lua"),
     cli     = dofile("/unison/lib/cli.lua"),
+    app     = dofile("/unison/lib/app.lua"),
+    fmt     = dofile("/unison/lib/fmt.lua"),
 }

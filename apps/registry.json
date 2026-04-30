@@ -3,72 +3,72 @@
   "updated_at": "2026-04-30",
   "packages": {
     "mine": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.0.1", "1.1.0"],
+      "latest": "1.2.0",
+      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0"],
       "description": "Vertical mining shaft; one-shot or RPC-driven",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
     },
     "sysmon": {
-      "latest": "1.0.2",
-      "versions": ["1.0.0", "1.0.1", "1.0.2"],
+      "latest": "1.0.3",
+      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3"],
       "description": "TUI system monitor (services, devices, log tail)",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/sysmon"
     },
     "pilot": {
-      "latest": "1.0.4",
-      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.1.0"],
       "description": "Remote-control a turtle via the message bus",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/pilot"
     },
     "storage": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Aggregate inventories on a wired-modem network as one storage pool",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/storage"
     },
     "atlas": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Shared landmark / location registry",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/atlas"
     },
     "farm": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Auto-harvester turtle: walks a row, harvests mature crops, replants",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/farm"
     },
     "autocraft": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Recipe orchestrator on a crafty turtle",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/autocraft"
     },
     "patrol": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Turtle route runner: record / replay / loop named patrols",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/patrol"
     },
     "scanner": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.1.0"],
       "description": "Turtle area scanner that populates atlas with discovered blocks",
       "author": "F000NKKK",
       "roles": ["turtle"],

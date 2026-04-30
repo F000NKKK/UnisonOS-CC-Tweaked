@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "phase": 9,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -26,6 +26,8 @@
       "unison/lib/kvstore.lua",
       "unison/lib/canvas.lua",
       "unison/lib/cli.lua",
+      "unison/lib/app.lua",
+      "unison/lib/fmt.lua",
       "unison/lib/init.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",
