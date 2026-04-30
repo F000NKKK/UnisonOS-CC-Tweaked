@@ -167,12 +167,38 @@ return {
 UPM refuses to install if the running OS is older. Push package updates as
 often as you like; only bump the OS for real platform changes.
 
+### UniAPI — `unison.*` exposed to apps
+
+Packaged apps don't `dofile` OS internals; they call into a stable API
+that the sandbox builds for them. The default surface (no special perms
+required):
+
+| Field                       | What                                       |
+|-----------------------------|--------------------------------------------|
+| `unison.role / .node / .id` | Device identity                            |
+| `unison.version`            | OS version string                          |
+| `unison.log`                | TRACE/DEBUG/INFO/WARN/ERROR logger         |
+| `unison.ipc`                | Per-process mailboxes                      |
+| `unison.kernel.services`    | Read-only service registry                 |
+| `unison.ui.{buffer,wm,widgets}` | TUI framework (lazy-loaded)            |
+| `unison.lib.fs`             | `read/write/append/ensureDir/deleteIf/list/listAll/readJson/writeJson/readLua/writeLua` |
+| `unison.lib.http`           | `get` (cache-bust), `getFromSources`, `post` |
+| `unison.lib.json`           | Safe `encode/decode`                       |
+| `unison.lib.semver`         | `parse/compare/gte/lte/eq`                 |
+| `unison.lib.path`           | `resolve(ctx, raw)` / `absolute(raw)`      |
+| `unison.permissions`        | Read-only set of granted permissions       |
+| `dofile("/unison/...")`     | Restricted to `/unison/*` paths            |
+
+`unison.rpc` (the message bus client) is added to the table only when
+the manifest requests the `rpc` permission; same goes for the rest of
+the gated capabilities below.
+
 ### Sandbox / permissions
 
 Packaged apps run inside a sandbox `_ENV` built from their `permissions`
 list. Without an explicit permission an app only sees pure-Lua stdlib,
-`sleep`, a safe subset of `term`/`os`, `printError`, and
-`unison.{log, role, node, id, version, kernel.services, ui.*, permissions}`.
+`sleep`, a safe subset of `term`/`os`, `printError`, the UniAPI table
+above, and the restricted `dofile`.
 Recognised permissions:
 
 | Permission   | Grants                                              |
@@ -202,10 +228,13 @@ A restricted `dofile` is available regardless: it can `dofile` any
 
 Available in `apps/registry.json` (default registry):
 
-* **`mine`** — vertical mining shaft for turtles.
-* **`sysmon`** — TUI dashboard listing services and registered devices.
-* **`pilot`** — remote-control a turtle from any computer over the bus
-  (forward/back/up/down, dig, place, refuel, sel, info, …).
+* **`mine`** (1.0.1) — vertical mining shaft for turtles.
+* **`sysmon`** (1.0.2) — TUI dashboard with three panes: services,
+  registered devices on the bus, and a live tail of `/unison/logs/current.log`.
+* **`pilot`** (1.0.4) — remote-control a turtle from any computer over the
+  bus (forward/back/up/down, dig, place, refuel, sel, info, …). Persists
+  per-target command history under `/unison/state/pilot-history-<id>.json`
+  via `unison.lib.fs.writeJson`.
 
 ## Services
 

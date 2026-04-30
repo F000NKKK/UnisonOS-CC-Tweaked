@@ -1,26 +1,26 @@
 {
   "schema": 1,
-  "updated_at": "2026-04-29",
+  "updated_at": "2026-04-30",
   "packages": {
     "mine": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.0.1",
+      "versions": ["1.0.0", "1.0.1"],
       "description": "Vertical mining shaft for turtles",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
     },
     "sysmon": {
-      "latest": "1.0.1",
-      "versions": ["1.0.0", "1.0.1"],
-      "description": "TUI system monitor (services, devices, uptime)",
+      "latest": "1.0.2",
+      "versions": ["1.0.0", "1.0.1", "1.0.2"],
+      "description": "TUI system monitor (services, devices, log tail)",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/sysmon"
     },
     "pilot": {
-      "latest": "1.0.3",
-      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3"],
+      "latest": "1.0.4",
+      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4"],
       "description": "Remote-control a turtle via the message bus",
       "author": "F000NKKK",
       "roles": ["any"],
