@@ -18,6 +18,20 @@ unison.kernel = {
     process = process,
     async = async,
 }
+-- Top-level shortcuts mirror sandbox.appUnison() so kernel-side code can
+-- use the same `unison.process` / `unison.async` form as apps.
+unison.process = process
+unison.async = async
+
+-- Shared utility library. Exposed globally so kernel services and shell
+-- commands can use it the same way sandboxed apps do (apps still get a
+-- per-sandbox copy via kernel/sandbox.lua).
+local ok_lib, lib = pcall(dofile, "/unison/lib/init.lua")
+if ok_lib and type(lib) == "table" then
+    unison.lib = lib
+else
+    log.warn("kernel", "lib/init.lua failed: " .. tostring(lib))
+end
 
 local function banner(nodeName, nodeRole, version)
     term.clear()
