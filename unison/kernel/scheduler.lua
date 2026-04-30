@@ -103,14 +103,19 @@ function M.run()
         end
         local ev = nextEvent()
         if ev[1] == "terminate" then
-            log.warn("kernel", "terminate received")
+            -- Deliver the terminate event to every coroutine. Each one's
+            -- os.pullEvent wrapper raises 'Terminated', which the foreground
+            -- app's pcall (in run.lua / sandbox.execFile) catches — bringing
+            -- the user back to the shell prompt. Background services with
+            -- restart=always are respawned by the service supervisor.
+            -- We do NOT exit the scheduler itself on Ctrl+T any more.
+            log.debug("kernel", "terminate delivered to user processes")
         end
         local snapshot = {}
         for pid, p in pairs(processes) do snapshot[#snapshot + 1] = p end
         for _, p in ipairs(snapshot) do
             if processes[p.pid] then resume(p, ev) end
         end
-        if ev[1] == "terminate" then return end
     end
 end
 
