@@ -3,9 +3,9 @@
   "updated_at": "2026-04-30",
   "packages": {
     "mine": {
-      "latest": "1.0.1",
-      "versions": ["1.0.0", "1.0.1"],
-      "description": "Vertical mining shaft for turtles",
+      "latest": "1.1.0",
+      "versions": ["1.0.0", "1.0.1", "1.1.0"],
+      "description": "Vertical mining shaft; one-shot or RPC-driven",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
@@ -33,6 +33,30 @@
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/storage"
+    },
+    "atlas": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Shared landmark / location registry",
+      "author": "F000NKKK",
+      "roles": ["any"],
+      "path": "packages/atlas"
+    },
+    "farm": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Auto-harvester turtle: walks a row, harvests mature crops, replants",
+      "author": "F000NKKK",
+      "roles": ["turtle"],
+      "path": "packages/farm"
+    },
+    "autocraft": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Recipe orchestrator on a crafty turtle",
+      "author": "F000NKKK",
+      "roles": ["turtle"],
+      "path": "packages/autocraft"
     }
   }
 }

@@ -240,7 +240,8 @@ A restricted `dofile` is available regardless: it can `dofile` any
 
 Available in `apps/registry.json` (default registry):
 
-* **`mine`** (1.0.1) — vertical mining shaft for turtles.
+* **`mine`** (1.1.0) — vertical mining shaft for turtles. Also a bus
+  listener (`mine listen`) accepting `mine_order` requests.
 * **`sysmon`** (1.0.2) — TUI dashboard with three panes: services,
   registered devices on the bus, and a live tail of `/unison/logs/current.log`.
 * **`pilot`** (1.0.4) — remote-control a turtle from any computer over the
@@ -251,6 +252,20 @@ Available in `apps/registry.json` (default registry):
   wired-modem network into one item pool. REPL with `list / find / pull /
   push / chests / buffer`, plus `storage_query` and `storage_pull` RPC
   handlers so other devices can ask "give me 64 coal" over the bus.
+* **`atlas`** (1.0.0) — shared landmark registry. Every node can mark a
+  place ("crafter", "iron-deposit", "main-chest") and query it later;
+  `atlas_query / atlas_mark / atlas_remove` over the bus.
+* **`farm`** (1.0.0) — turtle auto-harvester. Walks a configured row of
+  N blocks, harvests mature crops below, replants from inventory.
+  `farm_harvest / farm_status` over the bus.
+* **`autocraft`** (1.0.0) — recipe orchestrator on a crafty turtle.
+  Recipes in JSON, slot-aware shaped placement, output stack-folding.
+  `craft_order / recipe_list / recipe_add` over the bus.
+
+These speak a small shared protocol (see `docs/ECOSYSTEM.md`) so they
+compose: a control script can ask `autocraft` for sticks, `autocraft`
+asks `storage` for planks, `storage` asks `mine` for logs if it's
+short, etc.
 
 ## Services
 
