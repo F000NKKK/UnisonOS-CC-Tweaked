@@ -67,9 +67,9 @@
       "path": "packages/patrol"
     },
     "scanner": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.1.0"],
-      "description": "Turtle area scanner that populates atlas with discovered blocks",
+      "latest": "1.2.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0"],
+      "description": "Turtle sphere scanner (radius) with obstacle-aware movement and atlas sync",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/scanner"
