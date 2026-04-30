@@ -206,8 +206,25 @@ class WSHub:
                 [asyncio.create_task(reader()), asyncio.create_task(writer())],
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            # Drain results so asyncio doesn't log "exception was never
+            # retrieved" for the expected client-side disconnect.
+            import websockets as _ws_mod
+            for t in done:
+                try:
+                    t.result()
+                except (_ws_mod.ConnectionClosed, asyncio.CancelledError):
+                    pass
+                except Exception as exc:
+                    print(f"[ws] task error: {exc}", flush=True)
             for t in pending:
                 t.cancel()
+            for t in pending:
+                try:
+                    await t
+                except (_ws_mod.ConnectionClosed, asyncio.CancelledError):
+                    pass
+                except Exception:
+                    pass
         except Exception as exc:
             print(f"[ws] error: {exc}", flush=True)
         finally:
