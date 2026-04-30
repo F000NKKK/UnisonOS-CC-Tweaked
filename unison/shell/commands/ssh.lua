@@ -28,9 +28,18 @@ function M.run(ctx, args)
     end
 
     if mode == "whoami" or mode == "subs" then
+        local installed = ssh.installed and ssh.installed() or false
+        print("ssh server installed: " .. tostring(installed))
+        local snap = ssh.snapshot and ssh.snapshot()
+        if snap then
+            print(string.format("buffered terminal: %dx%d cursor=%d,%d",
+                snap.w, snap.h, snap.cursor.x, snap.cursor.y))
+        else
+            print("(no buffer — sshd is not capturing this terminal)")
+        end
         local subs = ssh.subscribers and ssh.subscribers() or {}
         local n = 0
-        print("active ssh subscribers:")
+        print("active subscribers:")
         for id in pairs(subs) do print("  " .. tostring(id)); n = n + 1 end
         if n == 0 then print("  (none)") end
         return
