@@ -94,10 +94,14 @@ function M.spawn(fn, name, opts)
         else proc._error = ret; log.warn("process", "pid=" .. proc.pid .. " (" .. proc.name .. ") error: " .. tostring(ret)) end
         proc._done = true
         os.queueEvent("unison_process_done", proc.pid)
-    end, name)
+    end, name, { priority = opts.priority, group = opts.group })
 
     return proc
 end
+
+function Process:setPriority(v) return scheduler.setPriority(self.pid, v) end
+function Process:nice(delta)    return scheduler.nice(self.pid, delta) end
+function Process:info()         return scheduler.get(self.pid) end
 
 function M.list()
     deps()
