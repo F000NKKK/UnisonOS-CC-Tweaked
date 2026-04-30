@@ -207,6 +207,18 @@ function M.build(permissions, opts)
         env.unison.rpc = unison.rpc
     end
 
+    -- Restricted dofile: lets apps load OS modules under /unison/* so they
+    -- can pull in helpers like /unison/ui/wm.lua without giving them full
+    -- filesystem reach. The loaded module runs in the *real* global env,
+    -- which is fine for trusted OS code.
+    env.dofile = function(path)
+        if type(path) ~= "string" or path:sub(1, 7) ~= "/unison" then
+            error("dofile: only /unison/* paths permitted in sandbox", 2)
+        end
+        if not fs.exists(path) then error("dofile: not found: " .. path, 2) end
+        return dofile(path)
+    end
+
     -- Snapshot of what the app has been granted, in case it wants to check.
     env.unison.permissions = readonlyTable(has)
 

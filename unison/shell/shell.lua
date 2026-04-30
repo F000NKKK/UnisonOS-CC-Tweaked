@@ -60,6 +60,17 @@ return function()
             if cmd then
                 local ok, err = pcall(cmd.run, ctx, toks)
                 if not ok then printError("error: " .. tostring(err)) end
+            elseif name and fs.exists("/unison/apps/" .. name) and
+                   fs.isDir("/unison/apps/" .. name) then
+                -- Installed UPM packages are callable directly as commands.
+                local runCmd = cmds["run"]
+                if runCmd then
+                    table.insert(toks, 1, name)
+                    local ok, err = pcall(runCmd.run, ctx, toks)
+                    if not ok then printError("error: " .. tostring(err)) end
+                else
+                    printError("run command missing")
+                end
             else
                 printError("unknown command: " .. tostring(name))
             end
