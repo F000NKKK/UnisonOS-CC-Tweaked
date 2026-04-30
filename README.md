@@ -240,8 +240,9 @@ A restricted `dofile` is available regardless: it can `dofile` any
 
 Available in `apps/registry.json` (default registry):
 
-* **`mine`** (1.1.0) — vertical mining shaft for turtles. Also a bus
-  listener (`mine listen`) accepting `mine_order` requests.
+* **`mine`** (1.3.0) — advanced turtle miner: shaft mode, coordinate
+  sectors (`mine sector ...`), GPS absolute sectors (`mine sector-abs ...`),
+  ore-targeted tunneling (`mine ore ...`), and bus listener mode (`mine listen`).
 * **`sysmon`** (1.0.2) — TUI dashboard with three panes: services,
   registered devices on the bus, and a live tail of `/unison/logs/current.log`.
 * **`pilot`** (1.0.4) — remote-control a turtle from any computer over the
