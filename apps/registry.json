@@ -19,8 +19,8 @@
       "path": "packages/sysmon"
     },
     "pilot": {
-      "latest": "1.0.0",
-      "versions": ["1.0.0"],
+      "latest": "1.0.1",
+      "versions": ["1.0.0", "1.0.1"],
       "description": "Remote-control a turtle via the message bus",
       "author": "F000NKKK",
       "roles": ["any"],
