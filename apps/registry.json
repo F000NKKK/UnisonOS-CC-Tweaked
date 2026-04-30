@@ -73,6 +73,14 @@
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/scanner"
+    },
+    "ssh": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Share / control a device's terminal over the bus (server + client)",
+      "author": "F000NKKK",
+      "roles": ["any"],
+      "path": "packages/ssh"
     }
   }
 }

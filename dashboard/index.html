@@ -166,12 +166,15 @@
     background: #111;
     padding: 8px;
     border-radius: 4px;
-    overflow: hidden;
+    overflow: auto;
+    max-width: 96vw; max-height: 70vh;
     user-select: text;
     white-space: pre;
     letter-spacing: 0;
+    outline: none;
   }
-  .cc-grid .row { display: block; height: 16px; }
+  .cc-grid:focus { box-shadow: 0 0 0 2px var(--accent); }
+  .cc-grid .row { display: block; height: 16px; white-space: nowrap; }
   .cc-grid .cell {
     display: inline-block; width: 9px; height: 16px; line-height: 16px;
     vertical-align: top; text-align: center;
@@ -456,8 +459,8 @@
   }
 
   // ---- Live mirror terminal -----------------------------------------
-  // Streams term frames from the device via term_subscribe / term_frame
-  // and forwards keystrokes back as term_input messages.
+  // Streams term frames from the device via ssh_subscribe / ssh_frame
+  // and forwards keystrokes back as ssh_input messages.
 
   const CC_PALETTE = [
     "#f0f0f0", "#f2b233", "#e57fd8", "#99b2f2",
@@ -469,51 +472,97 @@
 
   let termTarget = null;
   let termSubTimer = null;
-  let lastFrameW = 0, lastFrameH = 0;
+  let termDims = { w: 0, h: 0 };
+  let termCur = { x: 0, y: 0 };
 
-  function termRender(frame) {
+  function ensureGrid(w, h) {
+    if (w === termDims.w && h === termDims.h) return;
     const grid = $('tm-grid');
-    const w = frame.w, h = frame.h;
-    const cur = frame.cursor || { x: 0, y: 0 };
-    if (w !== lastFrameW || h !== lastFrameH) {
-      grid.innerHTML = '';
-      for (let y = 0; y < h; y++) {
-        const row = document.createElement('div');
-        row.className = 'row';
-        for (let x = 0; x < w; x++) {
-          const c = document.createElement('span');
-          c.className = 'cell';
-          row.appendChild(c);
-        }
-        grid.appendChild(row);
-      }
-      lastFrameW = w; lastFrameH = h;
-    }
-    const rows = frame.rows || {};
-    for (let y = 1; y <= h; y++) {
-      const data = rows[y] || rows[String(y)];
-      const rowEl = grid.children[y - 1];
-      if (!data || !rowEl) continue;
-      const chars = data.chars || '';
-      const fg = data.fg || '';
-      const bg = data.bg || '';
+    grid.innerHTML = '';
+    for (let y = 0; y < h; y++) {
+      const row = document.createElement('div');
+      row.className = 'row';
       for (let x = 0; x < w; x++) {
-        const cell = rowEl.children[x];
-        if (!cell) continue;
-        const ch = chars.charAt(x) || ' ';
-        const fi = parseInt(fg.charAt(x) || 'f', 16);
-        const bi = parseInt(bg.charAt(x) || '0', 16);
-        cell.textContent = ch;
-        cell.style.color = ccColor(isNaN(fi) ? 0 : fi);
-        cell.style.background = ccColor(isNaN(bi) ? 15 : bi);
-        cell.classList.toggle('cursor', x + 1 === cur.x && y === cur.y);
+        const c = document.createElement('span');
+        c.className = 'cell';
+        c.textContent = ' ';
+        c.style.background = ccColor(15);
+        c.style.color = ccColor(0);
+        row.appendChild(c);
       }
+      grid.appendChild(row);
+    }
+    termDims = { w: w, h: h };
+  }
+
+  function paintRow(y, data) {
+    const rowEl = $('tm-grid').children[y - 1];
+    if (!rowEl || !data) return;
+    const chars = data.chars || '';
+    const fg = data.fg || '';
+    const bg = data.bg || '';
+    for (let x = 0; x < termDims.w; x++) {
+      const cell = rowEl.children[x];
+      if (!cell) continue;
+      const ch = chars.charAt(x) || ' ';
+      const fi = parseInt(fg.charAt(x) || 'f', 16);
+      const bi = parseInt(bg.charAt(x) || '0', 16);
+      cell.textContent = ch === '' ? ' ' : ch;
+      cell.style.color = ccColor(isNaN(fi) ? 0 : fi);
+      cell.style.background = ccColor(isNaN(bi) ? 15 : bi);
+    }
+  }
+
+  function moveCursor(cur) {
+    if (!cur) return;
+    // clear old
+    if (termCur.y >= 1 && termCur.y <= termDims.h) {
+      const oldRow = $('tm-grid').children[termCur.y - 1];
+      if (oldRow) {
+        const oldCell = oldRow.children[termCur.x - 1];
+        if (oldCell) oldCell.classList.remove('cursor');
+      }
+    }
+    termCur = { x: cur.x, y: cur.y };
+    if (termCur.y >= 1 && termCur.y <= termDims.h) {
+      const newRow = $('tm-grid').children[termCur.y - 1];
+      if (newRow) {
+        const newCell = newRow.children[termCur.x - 1];
+        if (newCell) newCell.classList.add('cursor');
+      }
+    }
+  }
+
+  function termRender(msg) {
+    if (msg.full && msg.frame) {
+      const f = msg.frame;
+      ensureGrid(f.w, f.h);
+      for (let y = 1; y <= f.h; y++) paintRow(y, f.rows[y] || f.rows[String(y)]);
+      moveCursor(f.cursor);
+      return;
+    }
+    if (msg.diff) {
+      ensureGrid(msg.w, msg.h);
+      const rows = msg.rows || {};
+      for (const k in rows) {
+        const y = parseInt(k, 10);
+        if (!isNaN(y)) paintRow(y, rows[k]);
+      }
+      moveCursor(msg.cursor);
+      return;
+    }
+    // legacy full frame from older device
+    if (msg.frame) {
+      const f = msg.frame;
+      ensureGrid(f.w, f.h);
+      for (let y = 1; y <= f.h; y++) paintRow(y, f.rows[y] || f.rows[String(y)]);
+      moveCursor(f.cursor);
     }
   }
 
   async function termSubscribe() {
     if (!termTarget) return;
-    await pushMessage(termTarget, { type: 'term_subscribe', ttl: 30 });
+    await pushMessage(termTarget, { type: 'ssh_subscribe', ttl: 30 });
   }
 
   function openTerminal(id) {
@@ -531,7 +580,7 @@
 
   async function closeTerminal() {
     if (termTarget) {
-      await pushMessage(termTarget, { type: 'term_unsubscribe' });
+      await pushMessage(termTarget, { type: 'ssh_unsubscribe' });
     }
     $('term-modal').hidden = true;
     if (termSubTimer) { clearInterval(termSubTimer); termSubTimer = null; }
@@ -554,7 +603,7 @@
 
   async function sendTermInput(payload) {
     if (!termTarget) return;
-    payload.type = 'term_input';
+    payload.type = 'ssh_input';
     await pushMessage(termTarget, payload);
   }
 
@@ -592,9 +641,11 @@
 
   function handleInbound(envelope) {
     const body = envelope.msg || {};
-    if (termTarget && body.type === 'term_frame' && body.frame) {
-      termRender(body.frame);
-      $('tm-status').textContent = 'mirroring (' + body.frame.w + 'x' + body.frame.h + ')';
+    if (termTarget && body.type === 'ssh_frame') {
+      termRender(body);
+      const w = (body.frame && body.frame.w) || body.w || termDims.w;
+      const h = (body.frame && body.frame.h) || body.h || termDims.h;
+      $('tm-status').textContent = 'mirroring (' + w + 'x' + h + ')';
       return true;
     }
     return false;
