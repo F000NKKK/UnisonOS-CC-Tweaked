@@ -186,6 +186,7 @@
       <input id="exec-input" type="text" placeholder='shell line for selected device, e.g. "version"' />
       <button id="ping-btn" title="send a ping message">ping</button>
       <button id="exec-btn" title="run shell command">exec</button>
+      <button id="term-btn" class="primary" title="open interactive terminal for selected device">terminal</button>
       <span class="group">
         <button data-quick="version">version</button>
         <button data-quick="upm upgrade -y">upgrade</button>
@@ -418,7 +419,7 @@
           <td>${m.inventory_used ?? '-'}</td>
         `;
         tr.addEventListener('click', () => selectDevice(id));
-        tr.addEventListener('dblclick', () => openDeviceDetail(id));
+        tr.addEventListener('dblclick', () => openTerminal(id));
         tbody.appendChild(tr);
       }
     } catch (e) {
@@ -659,6 +660,10 @@
     b.addEventListener('click', () => execSelected(b.dataset.quick));
   });
 
+  $('term-btn').addEventListener('click', () => {
+    if (!selectedId) { logLine('select a device first', 'warn'); return; }
+    openTerminal(selectedId);
+  });
   $('tm-close').addEventListener('click', closeTerminal);
   $('tm-clear').addEventListener('click', () => { $('tm-out').innerHTML = ''; });
   $('tm-send').addEventListener('click', termSend);
