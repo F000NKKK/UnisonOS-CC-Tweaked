@@ -28,10 +28,25 @@ local function readonlyTable(t)
     return setmetatable({}, mt)
 end
 
+-- Guarantee a printError fallback. CC's BIOS defines it as a global, but in
+-- some sandbox/coroutine paths it's been seen missing — falling back to a
+-- coloured plain print keeps apps from crashing.
+local function _printErr(...)
+    if printError then return printError(...) end
+    if term and term.setTextColor then
+        local prev = term.getTextColor and term.getTextColor() or colors.white
+        term.setTextColor(colors.red)
+        print(...)
+        term.setTextColor(prev)
+    else
+        print(...)
+    end
+end
+
 local function buildBase()
     local env = {
         print = print, write = write, read = read,
-        printError = printError,
+        printError = printError or _printErr,
         tostring = tostring, tonumber = tonumber,
         ipairs = ipairs, pairs = pairs, next = next, select = select,
         type = type, error = error, assert = assert,
