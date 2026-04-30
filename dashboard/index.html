@@ -159,6 +159,24 @@
   .kv .v { color: var(--text); word-break: break-all; }
   pre.json { background: var(--bg); padding: 8px; border-radius: 4px;
              font-size: 11px; overflow: auto; max-height: 200px; margin: 4px 0; }
+
+  /* CC palette indices 0-15 mapped to CSS hex (matches CC:Tweaked defaults). */
+  .cc-grid {
+    font: 14px/16px ui-monospace, Menlo, Consolas, monospace;
+    background: #111;
+    padding: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    user-select: text;
+    white-space: pre;
+    letter-spacing: 0;
+  }
+  .cc-grid .row { display: block; height: 16px; }
+  .cc-grid .cell {
+    display: inline-block; width: 9px; height: 16px; line-height: 16px;
+    vertical-align: top; text-align: center;
+  }
+  .cc-grid .cursor { outline: 1px solid #ffea7f; outline-offset: -1px; }
 </style>
 </head>
 <body>
@@ -224,19 +242,20 @@
 </div>
 
 <div class="modal-overlay" id="term-modal" hidden>
-  <div class="modal-card" style="width:min(1100px,98vw); height:80vh;">
+  <div class="modal-card" style="width:auto; max-width:98vw;">
     <header style="display:flex; gap:12px; align-items:center;">
       <h2 id="tm-title">Terminal</h2>
       <span class="small" id="tm-status">disconnected</span>
-      <button id="tm-clear" style="margin-left:auto;">clear</button>
+      <span class="small" id="tm-mode">live mirror</span>
+      <button id="tm-paste" style="margin-left:auto;" title="paste clipboard into the device">paste</button>
+      <button id="tm-terminate" class="danger" title="hold Ctrl+T equivalent">terminate</button>
       <button id="tm-close">close</button>
     </header>
-    <div class="body" id="tm-out" style="font-size:12px; padding:8px 12px; background:var(--bg);"></div>
-    <div class="footer" style="gap:6px;">
-      <span class="small">$&gt;</span>
-      <input id="tm-input" type="text" style="flex:1;"
-             placeholder='shell command — Enter to run, ↑/↓ history' />
-      <button id="tm-send">run</button>
+    <div class="body" style="padding:0;">
+      <div id="tm-grid" class="cc-grid" tabindex="0"></div>
+    </div>
+    <div class="footer">
+      <span class="small">Click the grid then type. Enter / arrows / Ctrl-keys all forwarded. Esc closes.</span>
     </div>
   </div>
 </div>
@@ -436,74 +455,147 @@
     logLine('selected ' + id);
   }
 
-  // ---- Per-device interactive terminal -----------------------------------
-  let termTarget = null;
-  let termHistory = [];
-  let termHistIdx = 0;
-  const termHandlers = {};   // type -> handler installed in dispatch
+  // ---- Live mirror terminal -----------------------------------------
+  // Streams term frames from the device via term_subscribe / term_frame
+  // and forwards keystrokes back as term_input messages.
 
-  function termOut(msg, kind) {
-    const out = $('tm-out');
-    const div = document.createElement('div');
-    div.className = 'log-line ' + (kind || '');
-    const t = new Date().toLocaleTimeString();
-    div.textContent = `[${t}] ${msg}`;
-    out.appendChild(div);
-    out.scrollTop = out.scrollHeight;
-    while (out.children.length > 1500) out.removeChild(out.firstChild);
+  const CC_PALETTE = [
+    "#f0f0f0", "#f2b233", "#e57fd8", "#99b2f2",
+    "#dede6c", "#7fcc19", "#f2b2cc", "#4c4c4c",
+    "#999999", "#4c99b2", "#b266e5", "#3366cc",
+    "#7f664c", "#57a64e", "#cc4c4c", "#111111",
+  ];
+  function ccColor(idx) { return CC_PALETTE[(idx | 0) % 16] || "#f0f0f0"; }
+
+  let termTarget = null;
+  let termSubTimer = null;
+  let lastFrameW = 0, lastFrameH = 0;
+
+  function termRender(frame) {
+    const grid = $('tm-grid');
+    const w = frame.w, h = frame.h;
+    const cur = frame.cursor || { x: 0, y: 0 };
+    if (w !== lastFrameW || h !== lastFrameH) {
+      grid.innerHTML = '';
+      for (let y = 0; y < h; y++) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        for (let x = 0; x < w; x++) {
+          const c = document.createElement('span');
+          c.className = 'cell';
+          row.appendChild(c);
+        }
+        grid.appendChild(row);
+      }
+      lastFrameW = w; lastFrameH = h;
+    }
+    const rows = frame.rows || {};
+    for (let y = 1; y <= h; y++) {
+      const data = rows[y] || rows[String(y)];
+      const rowEl = grid.children[y - 1];
+      if (!data || !rowEl) continue;
+      const chars = data.chars || '';
+      const fg = data.fg || '';
+      const bg = data.bg || '';
+      for (let x = 0; x < w; x++) {
+        const cell = rowEl.children[x];
+        if (!cell) continue;
+        const ch = chars.charAt(x) || ' ';
+        const fi = parseInt(fg.charAt(x) || 'f', 16);
+        const bi = parseInt(bg.charAt(x) || '0', 16);
+        cell.textContent = ch;
+        cell.style.color = ccColor(isNaN(fi) ? 0 : fi);
+        cell.style.background = ccColor(isNaN(bi) ? 15 : bi);
+        cell.classList.toggle('cursor', x + 1 === cur.x && y === cur.y);
+      }
+    }
+  }
+
+  async function termSubscribe() {
+    if (!termTarget) return;
+    await pushMessage(termTarget, { type: 'term_subscribe', ttl: 30 });
   }
 
   function openTerminal(id) {
     termTarget = id;
-    termHistory = JSON.parse(localStorage.getItem('term-hist-' + id) || '[]');
-    termHistIdx = termHistory.length;
     $('tm-title').textContent = `Terminal — ${id}`;
-    $('tm-status').textContent = devices[id] ? 'connected' : 'unknown';
-    $('tm-out').innerHTML = '';
-    termOut('connected to ' + id + '. Type a shell command and hit Enter.', 'ok');
+    $('tm-status').textContent = devices[id] ? 'mirroring…' : 'unknown';
+    $('tm-grid').innerHTML = '';
+    lastFrameW = 0; lastFrameH = 0;
     $('term-modal').hidden = false;
-    setTimeout(() => $('tm-input').focus(), 50);
+    termSubscribe();
+    if (termSubTimer) clearInterval(termSubTimer);
+    termSubTimer = setInterval(termSubscribe, 15000);   // renew TTL
+    setTimeout(() => $('tm-grid').focus(), 50);
   }
 
-  function closeTerminal() {
+  async function closeTerminal() {
+    if (termTarget) {
+      await pushMessage(termTarget, { type: 'term_unsubscribe' });
+    }
     $('term-modal').hidden = true;
+    if (termSubTimer) { clearInterval(termSubTimer); termSubTimer = null; }
     termTarget = null;
   }
 
-  async function termSend() {
+  // Map browser KeyboardEvent.key / event.keyCode to CC keys (LWJGL).
+  // CC's keys.* values match LWJGL keycodes. Common keys mapped here.
+  const KEY_MAP = {
+    'Enter':       257,  'Tab':       258,  'Backspace': 259,
+    'Delete':      261,  'ArrowRight':262,  'ArrowLeft': 263,
+    'ArrowDown':   264,  'ArrowUp':   265,  'PageUp':    266,
+    'PageDown':    267,  'Home':      268,  'End':       269,
+    'CapsLock':    280,  'Escape':    256,  'F1':        290,
+    'F2':          291,  'F3':        292,  'F4':        293,
+    'F5':          294,  'F6':        295,  'F7':        296,
+    'F8':          297,  'F9':        298,  'F10':       299,
+    'F11':         300,  'F12':       301,  ' ':         32,
+  };
+
+  async function sendTermInput(payload) {
     if (!termTarget) return;
-    const input = $('tm-input');
-    const cmd = input.value.trim();
-    if (!cmd) return;
-    termHistory.push(cmd);
-    while (termHistory.length > 200) termHistory.shift();
-    localStorage.setItem('term-hist-' + termTarget, JSON.stringify(termHistory));
-    termHistIdx = termHistory.length;
-    termOut('$> ' + cmd, 'ok');
-    input.value = '';
-    await pushMessage(termTarget, { type: 'exec', command: cmd });
+    payload.type = 'term_input';
+    await pushMessage(termTarget, payload);
   }
 
-  // intercept exec_reply when terminal is open and pretty-print output
-  const origLogLine = (function () {
-    return logLine;
-  })();
-  // patch wsLoop dispatch — we hook into ws.onmessage handler? Easier:
-  // listen on a custom event we emit from ws.onmessage. The simpler path
-  // is wrapping the inbound message handler. We do it by adding a global
-  // function the ws handler calls — see connectWs below.
+  function termKeyDown(ev) {
+    if (!termTarget) return;
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closeTerminal();
+      return;
+    }
+    if (ev.ctrlKey && ev.key.toLowerCase() === 't') {
+      ev.preventDefault();
+      sendTermInput({ event: 'terminate' });
+      return;
+    }
+    const mapped = KEY_MAP[ev.key];
+    if (mapped) {
+      ev.preventDefault();
+      sendTermInput({ event: 'key', value: mapped, held: ev.repeat });
+      return;
+    }
+    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      ev.preventDefault();
+      sendTermInput({ event: 'char', value: ev.key });
+    }
+  }
+
+  function termPaste(ev) {
+    if (!termTarget) return;
+    const txt = (ev.clipboardData || window.clipboardData).getData('text');
+    if (!txt) return;
+    ev.preventDefault();
+    sendTermInput({ event: 'paste', value: txt });
+  }
+
   function handleInbound(envelope) {
     const body = envelope.msg || {};
-    if (termTarget && body.type === 'exec_reply') {
-      if (body.output && body.output !== '') {
-        for (const line of String(body.output).split('\n')) {
-          termOut(line);
-        }
-      }
-      if (body.ok === false) {
-        termOut('error: ' + (body.err || 'failed'), 'err');
-      }
-      return true;   // consumed, don't show in main activity log
+    if (termTarget && body.type === 'term_frame' && body.frame) {
+      termRender(body.frame);
+      $('tm-status').textContent = 'mirroring (' + body.frame.w + 'x' + body.frame.h + ')';
+      return true;
     }
     return false;
   }
@@ -665,21 +757,15 @@
     openTerminal(selectedId);
   });
   $('tm-close').addEventListener('click', closeTerminal);
-  $('tm-clear').addEventListener('click', () => { $('tm-out').innerHTML = ''; });
-  $('tm-send').addEventListener('click', termSend);
-  $('tm-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') termSend();
-    else if (e.key === 'ArrowUp') {
-      if (termHistory.length === 0) return;
-      termHistIdx = Math.max(0, termHistIdx - 1);
-      $('tm-input').value = termHistory[termHistIdx] || '';
-      e.preventDefault();
-    } else if (e.key === 'ArrowDown') {
-      termHistIdx = Math.min(termHistory.length, termHistIdx + 1);
-      $('tm-input').value = termHistory[termHistIdx] || '';
-      e.preventDefault();
-    }
+  $('tm-terminate').addEventListener('click', () => sendTermInput({ event: 'terminate' }));
+  $('tm-paste').addEventListener('click', async () => {
+    if (!navigator.clipboard) return;
+    const t = await navigator.clipboard.readText().catch(() => '');
+    if (t) sendTermInput({ event: 'paste', value: t });
   });
+  $('tm-grid').addEventListener('keydown', termKeyDown);
+  $('tm-grid').addEventListener('paste', termPaste);
+  $('tm-grid').addEventListener('click', () => $('tm-grid').focus());
 
   $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y', 'OS upgrade'));
   $('bulk-update-pkg').addEventListener('click', () => bulkExec('upm update', 'package update'));
