@@ -328,6 +328,22 @@ device (no `/unison/boot.lua` present) and even then asks for an explicit
 `yes` before installing or rebooting — leaving the disk in a drive never
 loops.
 
+## Web console
+
+Open `http://<your-vps>:9273/dashboard/` in a browser. It's a single-page
+console for the same message bus the devices use:
+
+* On first load it asks for the API base URL and bearer token; both are
+  stored in `localStorage` (logout button clears them).
+* Polls `/api/devices` every 2 seconds, shows a table with id / role /
+  version / last-seen / fuel / inventory.
+* Click a row to select a device, then **ping** or type a shell line and
+  hit **exec** to push a command to its inbox. The reply shows up in the
+  Activity panel.
+
+The dashboard is served straight off the static file server, no extra
+process. It's gated by the same bearer token as the JSON API.
+
 ## Self-hosted VPS server
 
 `tools/repo-server/` ships everything needed to host the package and

@@ -33,8 +33,9 @@ fi
 
 # Caddy expects /srv/unison/<repo>/<file> URLs to map directly.  We also expose
 # a top-level manifest.json + installer.lua via a stable path for installers.
-ln -sfn "$ROOT/os/manifest.json"  "$ROOT/manifest.json"
-ln -sfn "$ROOT/os/installer.lua"  "$ROOT/installer.lua"
+ln -sfn "$ROOT/os/manifest.json"    "$ROOT/manifest.json"
+ln -sfn "$ROOT/os/installer.lua"    "$ROOT/installer.lua"
 ln -sfn "$ROOT/os/disk_startup.lua" "$ROOT/disk_startup.lua"
+ln -sfn "$ROOT/os/dashboard"        "$ROOT/dashboard"
 
 echo "[unison-sync] $(date -Is) ok"

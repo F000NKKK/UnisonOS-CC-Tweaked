@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>UnisonOS Console</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --hover: #1f242c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    margin: 0; font-size: 16px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.5px;
+  }
+  header .status { color: var(--muted); font-size: 12px; }
+  header .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  button, .btn {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); padding: 4px 10px;
+    cursor: pointer; font: inherit; border-radius: 4px;
+  }
+  button:hover { background: var(--hover); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  input[type=text], input[type=password] {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 4px; font: inherit;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    height: calc(100% - 49px);
+  }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .panel h2 {
+    margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 600;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .panel .body { flex: 1; overflow: auto; }
+
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: var(--hover); }
+  tr.row.selected { background: var(--hover); }
+
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--err); margin-right: 6px; vertical-align: middle;
+  }
+  .status-dot.ok { background: var(--ok); }
+  .status-dot.warn { background: var(--warn); }
+
+  .small { font-size: 11px; color: var(--muted); }
+
+  #log { font-size: 12px; padding: 8px 12px; }
+  .log-line { white-space: pre-wrap; word-break: break-all; padding: 2px 0; }
+  .log-line.err { color: var(--err); }
+  .log-line.warn { color: var(--warn); }
+  .log-line.ok { color: var(--ok); }
+
+  .actions {
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .actions input[type=text] { flex: 1; min-width: 160px; }
+
+  .auth-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .auth-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 24px; width: 400px;
+  }
+  .auth-card h2 { margin: 0 0 12px 0; color: var(--accent); }
+  .auth-card label { display: block; margin: 8px 0 4px; color: var(--muted); }
+  .auth-card input { width: 100%; }
+  .auth-card .row { display: flex; gap: 8px; margin-top: 16px; }
+  .auth-card .row button { flex: 1; }
+  .auth-card .err { color: var(--err); font-size: 12px; min-height: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>UnisonOS Console</h1>
+  <span class="status" id="conn-status">checking…</span>
+  <div class="right">
+    <span class="small" id="device-count"></span>
+    <button id="logout-btn" title="forget the saved API config">logout</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Devices</h2>
+    <div class="actions">
+      <input id="exec-input" type="text" placeholder='shell command for selected device, e.g. "version"' />
+      <button id="ping-btn">ping</button>
+      <button id="exec-btn">exec</button>
+      <button id="refresh-btn">refresh</button>
+    </div>
+    <div class="body">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Role</th><th>Name</th><th>Version</th><th>Seen</th><th>Fuel</th><th>Inv</th>
+          </tr>
+        </thead>
+        <tbody id="devices-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Activity</h2>
+    <div class="body" id="log"></div>
+  </section>
+</main>
+
+<div class="auth-overlay" id="auth-overlay" hidden>
+  <div class="auth-card">
+    <h2>UnisonOS Console</h2>
+    <p class="small">Enter the API base URL and bearer token of your VPS.</p>
+    <label>API base</label>
+    <input id="auth-base" type="text" placeholder="http://upm.hush-vp.ru:9273" />
+    <label>Bearer token</label>
+    <input id="auth-token" type="password" placeholder="(leave blank if server has no auth)" />
+    <div class="err" id="auth-err"></div>
+    <div class="row">
+      <button id="auth-cancel">cancel</button>
+      <button id="auth-ok">connect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const STORAGE_KEY = 'unison-console';
+  const POLL_MS = 2000;
+  let cfg = null;
+  let selectedId = null;
+  let timer = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  function loadCfg() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
+    catch (e) { return null; }
+  }
+  function saveCfg(v) { localStorage.setItem(STORAGE_KEY, JSON.stringify(v)); }
+  function clearCfg() { localStorage.removeItem(STORAGE_KEY); }
+
+  function defaultBase() {
+    const url = new URL(location.href);
+    return `${url.protocol}//${url.hostname}:${url.port || (url.protocol === 'https:' ? 9274 : 9273)}`;
+  }
+
+  function showAuth(err) {
+    $('auth-overlay').hidden = false;
+    $('auth-err').textContent = err || '';
+    if (!$('auth-base').value) $('auth-base').value = (cfg && cfg.base) || defaultBase();
+    if (cfg && cfg.token) $('auth-token').value = cfg.token;
+  }
+  function hideAuth() { $('auth-overlay').hidden = true; }
+
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = opts.headers || {};
+    if (cfg && cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
+    if (opts.body && typeof opts.body !== 'string') {
+      headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(opts.body);
+    }
+    const url = (cfg.base || defaultBase()) + path + (path.includes('?') ? '&' : '?') + '_=' + Date.now();
+    const r = await fetch(url, { ...opts, headers });
+    if (r.status === 401) { showAuth('unauthorized — check token'); throw new Error('unauthorized'); }
+    if (!r.ok) throw new Error('http ' + r.status);
+    return r.json();
+  }
+
+  function fmtAge(ms) {
+    if (!ms) return '-';
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.floor(s/60) + 'm';
+    return Math.floor(s/3600) + 'h';
+  }
+
+  function statusDotClass(ms) {
+    if (!ms) return '';
+    const age = (Date.now() - ms) / 1000;
+    if (age < 30) return 'ok';
+    if (age < 120) return 'warn';
+    return '';
+  }
+
+  function logLine(msg, kind) {
+    const div = document.createElement('div');
+    div.className = 'log-line ' + (kind || '');
+    const t = new Date().toLocaleTimeString();
+    div.textContent = `[${t}] ${msg}`;
+    const log = $('log');
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    while (log.children.length > 500) log.removeChild(log.firstChild);
+  }
+
+  async function refresh() {
+    try {
+      const devices = await api('/api/devices');
+      $('conn-status').textContent = 'online';
+      $('conn-status').style.color = 'var(--ok)';
+      const ids = Object.keys(devices).sort();
+      $('device-count').textContent = ids.length + ' device' + (ids.length === 1 ? '' : 's');
+
+      const tbody = $('devices-tbody');
+      tbody.innerHTML = '';
+      for (const id of ids) {
+        const d = devices[id];
+        const m = d.metrics || {};
+        const tr = document.createElement('tr');
+        tr.className = 'row' + (id === selectedId ? ' selected' : '');
+        tr.dataset.id = id;
+        tr.innerHTML = `
+          <td><span class="status-dot ${statusDotClass(d.last_seen)}"></span>${id}</td>
+          <td>${d.role || '-'}</td>
+          <td>${d.name || '-'}</td>
+          <td>${d.version || '-'}</td>
+          <td>${fmtAge(d.last_seen)}</td>
+          <td>${m.fuel ?? '-'}</td>
+          <td>${m.inventory_used ?? '-'}</td>
+        `;
+        tr.addEventListener('click', () => selectDevice(id));
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      $('conn-status').textContent = 'offline (' + e.message + ')';
+      $('conn-status').style.color = 'var(--err)';
+    }
+  }
+
+  function selectDevice(id) {
+    selectedId = id;
+    document.querySelectorAll('tr.row').forEach(tr => {
+      tr.classList.toggle('selected', tr.dataset.id === id);
+    });
+    logLine('selected ' + id);
+  }
+
+  async function pingSelected() {
+    if (!selectedId) { logLine('select a device first', 'warn'); return; }
+    try {
+      const r = await api('/api/messages/' + selectedId, {
+        method: 'POST',
+        body: { type: 'ping', from: 'console' }
+      });
+      logLine('queued ping → ' + selectedId + '  id=' + (r.message?.id || ''), 'ok');
+    } catch (e) {
+      logLine('ping failed: ' + e.message, 'err');
+    }
+  }
+
+  async function execSelected() {
+    const cmd = $('exec-input').value.trim();
+    if (!selectedId) { logLine('select a device first', 'warn'); return; }
+    if (!cmd) { logLine('enter a shell command', 'warn'); return; }
+    try {
+      const r = await api('/api/messages/' + selectedId, {
+        method: 'POST',
+        body: { type: 'exec', command: cmd, from: 'console' }
+      });
+      logLine('queued exec → ' + selectedId + ' : ' + cmd, 'ok');
+    } catch (e) {
+      logLine('exec failed: ' + e.message, 'err');
+    }
+  }
+
+  function start() {
+    cfg = loadCfg();
+    if (!cfg) { showAuth(); return; }
+    refresh();
+    if (timer) clearInterval(timer);
+    timer = setInterval(refresh, POLL_MS);
+  }
+
+  $('auth-ok').addEventListener('click', () => {
+    cfg = {
+      base: $('auth-base').value.trim() || defaultBase(),
+      token: $('auth-token').value || '',
+    };
+    saveCfg(cfg);
+    hideAuth();
+    start();
+  });
+  $('auth-cancel').addEventListener('click', () => hideAuth());
+  $('logout-btn').addEventListener('click', () => {
+    clearCfg(); cfg = null;
+    if (timer) clearInterval(timer);
+    showAuth();
+  });
+  $('refresh-btn').addEventListener('click', refresh);
+  $('ping-btn').addEventListener('click', pingSelected);
+  $('exec-btn').addEventListener('click', execSelected);
+  $('exec-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') execSelected();
+  });
+
+  start();
+})();
+</script>
+</body>
+</html>
