@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "phase": 8,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -22,6 +22,8 @@
       "unison/lib/semver.lua",
       "unison/lib/path.lua",
       "unison/lib/kvstore.lua",
+      "unison/lib/canvas.lua",
+      "unison/lib/cli.lua",
       "unison/lib/init.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",

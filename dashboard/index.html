@@ -129,6 +129,36 @@
     background: var(--err); margin-right: 4px;
   }
   .ws-led.ok { background: var(--ok); }
+
+  /* Device detail modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 80;
+  }
+  .modal-overlay[hidden] { display: none !important; }
+  .modal-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; width: min(900px, 95vw); max-height: 85vh;
+    display: flex; flex-direction: column;
+  }
+  .modal-card header {
+    background: transparent; border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+  }
+  .modal-card header h2 {
+    color: var(--accent); margin: 0; font-size: 16px;
+  }
+  .modal-card .body { padding: 12px 16px; overflow: auto; flex: 1; }
+  .modal-card .footer {
+    padding: 10px 16px; border-top: 1px solid var(--border);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--text); word-break: break-all; }
+  pre.json { background: var(--bg); padding: 8px; border-radius: 4px;
+             font-size: 11px; overflow: auto; max-height: 200px; margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -183,6 +213,14 @@
     <div class="body" id="log"></div>
   </section>
 </main>
+
+<div class="modal-overlay" id="device-modal" hidden>
+  <div class="modal-card">
+    <header><h2 id="dm-title">Device</h2></header>
+    <div class="body" id="dm-body"></div>
+    <div class="footer" id="dm-actions"></div>
+  </div>
+</div>
 
 <div class="auth-overlay" id="auth-overlay" hidden>
   <div class="auth-card">
@@ -361,6 +399,7 @@
           <td>${m.inventory_used ?? '-'}</td>
         `;
         tr.addEventListener('click', () => selectDevice(id));
+        tr.addEventListener('dblclick', () => openDeviceDetail(id));
         tbody.appendChild(tr);
       }
     } catch (e) {
@@ -375,6 +414,63 @@
       tr.classList.toggle('selected', tr.dataset.id === id);
     });
     logLine('selected ' + id);
+  }
+
+  function openDeviceDetail(id) {
+    const d = devices[id];
+    if (!d) return;
+    selectedId = id;
+    $('dm-title').textContent = `${id} — ${d.role || '?'} v${d.version || '?'}`;
+    const body = $('dm-body');
+    const m = d.metrics || {};
+    body.innerHTML = `
+      <div class="kv">
+        <div class="k">Name</div>           <div class="v">${d.name || '-'}</div>
+        <div class="k">Role</div>           <div class="v">${d.role || '-'}</div>
+        <div class="k">Version</div>        <div class="v">${d.version || '-'}</div>
+        <div class="k">Last seen</div>      <div class="v">${fmtAge(d.last_seen)} ago</div>
+        <div class="k">Transport</div>      <div class="v">${d.transport || 'http'}</div>
+        <div class="k">Uptime</div>         <div class="v">${m.uptime ?? '-'} s</div>
+        <div class="k">Free memory</div>    <div class="v">${m.free_mem ?? '-'}</div>
+        <div class="k">Fuel</div>           <div class="v">${m.fuel ?? '-'}</div>
+        <div class="k">Inventory used</div> <div class="v">${m.inventory_used ?? '-'} / 16</div>
+      </div>
+      <h3 class="small" style="margin-top:12px;color:var(--muted);">Raw record</h3>
+      <pre class="json">${JSON.stringify(d, null, 2)}</pre>
+    `;
+
+    const actions = $('dm-actions');
+    actions.innerHTML = '';
+    const buttons = [
+      { label: 'ping', cmd: null, fn: () => pushMessage(id, { type: 'ping' }) },
+      { label: 'version', cmd: 'version' },
+      { label: 'service list', cmd: 'service list' },
+      { label: 'upm list', cmd: 'upm list' },
+      { label: 'upm upgrade', cmd: 'upm upgrade -y' },
+      { label: 'reboot', cmd: 'reboot', danger: true },
+    ];
+    if (d.role === 'turtle') {
+      buttons.splice(2, 0,
+        { label: 'mine 32', cmd: 'mine 32' },
+        { label: 'farm 8', cmd: 'farm 8' });
+    }
+    for (const b of buttons) {
+      const el = document.createElement('button');
+      el.textContent = b.label;
+      if (b.danger) el.className = 'danger';
+      el.addEventListener('click', () => {
+        if (b.fn) b.fn();
+        else pushMessage(id, { type: 'exec', command: b.cmd });
+      });
+      actions.appendChild(el);
+    }
+    const close = document.createElement('button');
+    close.textContent = 'close';
+    close.style.marginLeft = 'auto';
+    close.addEventListener('click', () => $('device-modal').hidden = true);
+    actions.appendChild(close);
+
+    $('device-modal').hidden = false;
   }
 
   async function pushMessage(deviceId, body) {
@@ -410,6 +506,27 @@
     }
   }
 
+  // ---- Self-update -----------------------------------------------------
+  // Poll our own HTML every 30s; if the body changed, reload.
+  let pageHash = null;
+  async function checkSelfUpdate() {
+    try {
+      const r = await fetch(location.href + '?_=' + Date.now(),
+                            { cache: 'no-store' });
+      if (!r.ok) return;
+      const txt = await r.text();
+      let h = 0;
+      for (let i = 0; i < txt.length; i++) {
+        h = ((h << 5) - h + txt.charCodeAt(i)) | 0;
+      }
+      if (pageHash === null) { pageHash = h; return; }
+      if (h !== pageHash) {
+        logLine('dashboard updated upstream — reloading…', 'ok');
+        setTimeout(() => location.reload(), 800);
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   // ---- Boot ------------------------------------------------------------
 
   function start() {
@@ -419,6 +536,8 @@
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, POLL_MS);
     connectWs();
+    checkSelfUpdate();
+    setInterval(checkSelfUpdate, 30000);
   }
 
   $('auth-ok').addEventListener('click', () => {

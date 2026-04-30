@@ -64,13 +64,15 @@ local function discoverMonitors()
     return out
 end
 
+local DEFAULT_SCALE = 0.5
+
 local function applyMonitorSettings(entry, settings)
     settings = settings or {}
-    if entry.mon.setTextScale and settings.scale then
-        pcall(entry.mon.setTextScale, settings.scale)
+    if entry.mon.setTextScale then
+        pcall(entry.mon.setTextScale, settings.scale or DEFAULT_SCALE)
     end
-    if entry.mon.setBackgroundColor and settings.background then
-        pcall(entry.mon.setBackgroundColor, settings.background)
+    if entry.mon.setBackgroundColor then
+        pcall(entry.mon.setBackgroundColor, settings.background or colors.black)
     end
     if entry.mon.clear then pcall(entry.mon.clear) end
     if entry.mon.setCursorPos then pcall(entry.mon.setCursorPos, 1, 1) end
@@ -78,13 +80,25 @@ end
 
 local function buildMultiplex(primary, targets)
     local m = {}
+    local failures = {}    -- target -> consecutive failure count
 
     for _, fn in ipairs(TERM_FORWARD) do
         m[fn] = function(...)
             local args = { ... }
+            local stale = false
             for _, t in ipairs(targets) do
-                if t[fn] then pcall(t[fn], table.unpack(args)) end
+                if t[fn] then
+                    local ok = pcall(t[fn], table.unpack(args))
+                    if not ok then
+                        failures[t] = (failures[t] or 0) + 1
+                        if failures[t] > 5 then stale = true end
+                    else
+                        failures[t] = 0
+                    end
+                end
             end
+            -- If anything looked stale, ask the watcher to re-scan.
+            if stale then os.queueEvent("peripheral_detach", "monitor") end
         end
     end
 
@@ -211,16 +225,42 @@ function M.refresh()
 end
 
 function M.watcherLoop()
+    -- Periodic safety net: re-discover monitors every ~10s in case an
+    -- attach/detach event was missed (occasional CC quirk on
+    -- monitor reconnects).
+    local function tick()
+        os.startTimer(10)
+        return os.pullEvent()
+    end
     while true do
         local ev, side = os.pullEvent()
+        local needRefresh = false
         if ev == "peripheral" or ev == "peripheral_detach" then
-            if peripheral.getType(side) == "monitor" or ev == "peripheral_detach" then
-                local prev = #state.monitors
-                M.refresh()
-                if prev ~= #state.monitors then
-                    log.info("display", "monitor topology changed; targets=" .. #state.targets)
-                end
+            if ev == "peripheral_detach" or peripheral.getType(side) == "monitor" then
+                needRefresh = true
             end
+        elseif ev == "monitor_resize" then
+            needRefresh = true
+        elseif ev == "timer" then
+            -- ignore — only used for periodic refresh by spawnPeriodic
+        end
+        if needRefresh then
+            local prev = #state.monitors
+            M.refresh()
+            if prev ~= #state.monitors then
+                log.info("display", "monitor topology changed; targets=" .. #state.targets)
+            end
+        end
+    end
+end
+
+function M.periodicRefreshLoop()
+    while true do
+        sleep(10)
+        local prev = #state.monitors
+        local ok = pcall(M.refresh)
+        if ok and prev ~= #state.monitors then
+            log.info("display", "periodic refresh saw " .. #state.monitors .. " monitor(s)")
         end
     end
 end

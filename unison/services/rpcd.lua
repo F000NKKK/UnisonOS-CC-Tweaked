@@ -160,12 +160,43 @@ function M.run()
     M.on("exec", function(msg, env)
         if not msg.command then return end
         log.info("rpcd", "remote exec: " .. tostring(msg.command))
-        local ok, err = pcall(shell.run, msg.command)
-        client.send(env.from or msg.from or "broadcast", {
+
+        -- The CraftOS `shell` global is not in scope inside our rpcd
+        -- coroutine, so route the line through our own shell-command
+        -- loader, then fall back to /unison/apps/<name>/ for installed
+        -- packages.
+        local toks = {}
+        for w in msg.command:gmatch("%S+") do toks[#toks + 1] = w end
+        local name = toks[1]; table.remove(toks, 1)
+
+        local function tryBuiltin()
+            local p = "/unison/shell/commands/" .. tostring(name) .. ".lua"
+            if not fs.exists(p) then return nil end
+            local fn = loadfile(p); if not fn then return false, "load builtin failed" end
+            local mod = fn(); if not (mod and mod.run) then return false, "bad builtin" end
+            local ctx = { commands = {}, cwd = "/", running = true, history = {} }
+            return pcall(mod.run, ctx, toks)
+        end
+
+        local function tryApp()
+            local d = "/unison/apps/" .. tostring(name)
+            if not (fs.exists(d) and fs.isDir(d)) then return nil end
+            local fn = loadfile("/unison/shell/commands/run.lua")
+            if not fn then return false, "run loader failed" end
+            local mod = fn(); if not (mod and mod.run) then return false, "bad run module" end
+            local ctx = { cwd = "/" }
+            table.insert(toks, 1, name)
+            return pcall(mod.run, ctx, toks)
+        end
+
+        local ok, err = tryBuiltin()
+        if ok == nil then ok, err = tryApp() end
+        if ok == nil then ok, err = false, "unknown command: " .. tostring(name) end
+
+        client.reply(env, {
             type = "exec_reply",
-            in_reply_to = env.id,
-            ok = ok,
-            err = err and tostring(err),
+            ok = ok or false,
+            err = (not ok) and tostring(err) or nil,
         })
     end)
 

@@ -11,6 +11,9 @@ return {
         local disp = dofile("/unison/services/display.lua")
         disp.start(cfg)
         unison.display = disp
+        if unison.kernel and unison.kernel.scheduler and disp.periodicRefreshLoop then
+            unison.kernel.scheduler.spawn(disp.periodicRefreshLoop, "display-refresh")
+        end
     end,
 
     main = function(cfg)

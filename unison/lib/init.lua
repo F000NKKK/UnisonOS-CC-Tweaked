@@ -7,4 +7,6 @@ return {
     semver  = dofile("/unison/lib/semver.lua"),
     path    = dofile("/unison/lib/path.lua"),
     kvstore = dofile("/unison/lib/kvstore.lua"),
+    canvas  = dofile("/unison/lib/canvas.lua"),
+    cli     = dofile("/unison/lib/cli.lua"),
 }
