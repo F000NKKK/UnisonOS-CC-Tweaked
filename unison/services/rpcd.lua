@@ -124,6 +124,23 @@ function M.run()
     -- Expose subscription + transport-aware send to apps.
     client.on  = M.on
     client.off = function(msgType) handlers[msgType] = nil end
+    -- subscribe = idempotent register: drops stale handlers first, then on().
+    -- Apps used to call off()+on() everywhere; this folds it into one call.
+    client.subscribe = function(msgType, fn)
+        handlers[msgType] = nil
+        M.on(msgType, fn)
+    end
+    -- reply(env, payload) — sends a typed reply back to the message origin
+    -- with from/in_reply_to filled in. payload is merged in.
+    client.reply = function(env, payload)
+        local from = env and env.msg and env.msg.from
+                  or env and env.from
+                  or "broadcast"
+        local out = { from = tostring(os.getComputerID()) }
+        if env and env.id then out.in_reply_to = env.id end
+        for k, v in pairs(payload or {}) do out[k] = v end
+        return client.send(from, out)
+    end
     -- Replace send with WS-aware variant; original HTTP send still
     -- accessible via client.httpSend for fallback debugging.
     client.httpSend = client.send

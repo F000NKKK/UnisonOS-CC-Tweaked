@@ -57,6 +57,22 @@
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/autocraft"
+    },
+    "patrol": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Turtle route runner: record / replay / loop named patrols",
+      "author": "F000NKKK",
+      "roles": ["turtle"],
+      "path": "packages/patrol"
+    },
+    "scanner": {
+      "latest": "1.0.0",
+      "versions": ["1.0.0"],
+      "description": "Turtle area scanner that populates atlas with discovered blocks",
+      "author": "F000NKKK",
+      "roles": ["turtle"],
+      "path": "packages/scanner"
     }
   }
 }

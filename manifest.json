@@ -1,7 +1,7 @@
 {
   "name": "UnisonOS",
-  "version": "0.8.0",
-  "phase": 6,
+  "version": "0.8.1",
+  "phase": 8,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
@@ -21,6 +21,7 @@
       "unison/lib/json.lua",
       "unison/lib/semver.lua",
       "unison/lib/path.lua",
+      "unison/lib/kvstore.lua",
       "unison/lib/init.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",
