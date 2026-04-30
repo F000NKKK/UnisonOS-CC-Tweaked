@@ -31,6 +31,7 @@ end
 local function buildBase()
     local env = {
         print = print, write = write, read = read,
+        printError = printError,
         tostring = tostring, tonumber = tonumber,
         ipairs = ipairs, pairs = pairs, next = next, select = select,
         type = type, error = error, assert = assert,
