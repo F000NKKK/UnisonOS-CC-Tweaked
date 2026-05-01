@@ -1,20 +1,20 @@
--- unison.ui.desktop — TUI shell with pixel-based decorations.
+-- unison.ui.desktop — TUI shell with hand-drawn pixel chrome.
+--
+-- Chrome (top bar, bottom bar, launcher icons) is rendered via
+-- canvas.subpixel — each cell holds two stacked pixels via the
+-- half-block character, doubling vertical resolution.
 --
 -- Layout:
---   top bar    (1 cell row, painted as pixels via canvas)
---   workspace  (the rest, app windows on the left)
---   launcher   (right side column)
---   bottom bar (1 cell row, hint pixmap)
+--   Row 1     : pixel top bar (logo on left, title in middle, time right)
+--   Rows 2..  : workspace (apps) on the left + launcher panel on the right
+--   Row H     : pixel bottom bar with hint text
 --
--- Keybindings (no Ctrl combos — CC doesn't expose modifier state):
---   Tab           cycle window focus
---   q             quit desktop (from launcher)
---   x             close focused app    (from launcher)
+-- Keys (no Ctrl combos — CC doesn't surface modifier state):
+--   Tab           cycle focus
 --   1..9          fast-launch app N
---   Up/Down/Enter navigate launcher
---
--- Apps live in /unison/ui/apps/<name>.lua and return
---   { id, title, roles, make(geom) -> window-table }
+--   Up/Dn/Enter   navigate launcher
+--   x             close focused app (from launcher)
+--   q             quit desktop (from launcher)
 
 local wm     = dofile("/unison/ui/wm.lua")
 local Buffer = dofile("/unison/ui/buffer.lua")
@@ -43,7 +43,7 @@ local function discoverApps()
     if not fs.exists(APPS_DIR) then return out end
     for _, f in ipairs(fs.list(APPS_DIR)) do
         if f:sub(-4) == ".lua" then
-            local mod, err = loadApp(f)
+            local mod = loadApp(f)
             if mod then out[#out + 1] = mod end
         end
     end
@@ -60,132 +60,177 @@ local function appAllowedHere(app, role)
 end
 
 ----------------------------------------------------------------------
--- Pixel chrome (top bar / bottom bar / icons)
+-- Pixel art helpers
 ----------------------------------------------------------------------
 
--- Picks an "icon colour" deterministically per-app id, cycling through
--- a curated palette of CC colours. Same app always gets the same hue.
+-- 16-color palette to pick from (skip black so icons stay visible).
 local ICON_PALETTE = {
     colors.lightBlue, colors.lime, colors.orange, colors.magenta,
     colors.yellow, colors.cyan, colors.pink, colors.purple,
-    colors.red, colors.green,
+    colors.red, colors.green, colors.brown,
 }
+
 local function iconColor(id)
     local h = 0
     for i = 1, #id do h = (h * 31 + id:byte(i)) % 1000003 end
     return ICON_PALETTE[(h % #ICON_PALETTE) + 1]
 end
 
-local function drawTopBar(state)
+-- Smooth gradient across N stops, returns the colour for index i in [1..n].
+-- Picks from a palette so each band is a discrete CC colour.
+local function gradient(palette, n, i)
+    local p = math.max(1, math.min(#palette, math.ceil((i / n) * #palette)))
+    return palette[p]
+end
+
+-- Draws a 2-pixel-tall horizontal strip on cell row `cy`, with the
+-- per-x top/bottom colours coming from the colour-fn(x).
+-- The render writes one half-block character per cell with fg=top, bg=bot.
+local HEX = {
+    [colors.white]      = "0", [colors.orange]    = "1",
+    [colors.magenta]    = "2", [colors.lightBlue] = "3",
+    [colors.yellow]     = "4", [colors.lime]      = "5",
+    [colors.pink]       = "6", [colors.gray]      = "7",
+    [colors.lightGray]  = "8", [colors.cyan]      = "9",
+    [colors.purple]     = "a", [colors.blue]      = "b",
+    [colors.brown]      = "c", [colors.green]     = "d",
+    [colors.red]        = "e", [colors.black]     = "f",
+}
+local HALF_BLOCK = string.char(0x95)   -- "▀" upper-half block in CC font
+
+local function drawStrip(cy, w, colourFn)
     local t = term.current()
-    -- Full-width gradient: dark grey base + accent pixel run.
-    t.setCursorPos(1, 1)
-    t.setBackgroundColor(colors.gray)
-    t.setTextColor(colors.white)
-    t.write(string.rep(" ", state.W))
-    -- Accent pixel block on the left.
-    t.setCursorPos(1, 1)
-    t.setBackgroundColor(colors.cyan); t.write("  ")
-    t.setBackgroundColor(colors.lightBlue); t.write("  ")
-    t.setBackgroundColor(colors.gray); t.setTextColor(colors.white)
-    -- Title.
+    local chars, fgs, bgs = {}, {}, {}
+    for x = 1, w do
+        local top, bot = colourFn(x)
+        chars[#chars + 1] = HALF_BLOCK
+        fgs[#fgs + 1] = HEX[top or colors.gray] or "7"
+        bgs[#bgs + 1] = HEX[bot or colors.gray] or "7"
+    end
+    t.setCursorPos(1, cy)
+    t.blit(table.concat(chars), table.concat(fgs), table.concat(bgs))
+end
+
+-- Overlays plain text on top of the strip we just drew. Writing text
+-- replaces the half-block in those cells, but we keep the bg colour
+-- so it visually reads as part of the strip.
+local function overlayText(t, cx, cy, str, fg, bg)
+    t.setCursorPos(cx, cy)
+    t.setTextColor(fg)
+    t.setBackgroundColor(bg)
+    t.write(str)
+end
+
+----------------------------------------------------------------------
+-- Chrome
+----------------------------------------------------------------------
+
+-- Top bar: gradient cyan→blue strip, "UnisonOS" wordmark on left,
+-- focused app title in the middle, clock on the right.
+local function drawTopBar(state)
+    local W = state.W
+    local TOP_PAL = { colors.cyan, colors.lightBlue, colors.blue, colors.gray }
+    local BOT_PAL = { colors.lightBlue, colors.blue, colors.gray, colors.gray }
+
+    drawStrip(1, W, function(x)
+        return gradient(TOP_PAL, W, x), gradient(BOT_PAL, W, x)
+    end)
+
+    local t = term.current()
+    -- Wordmark.
     local node = (unison and unison.node) or "?"
     local role = (unison and unison.role) or "?"
-    t.setCursorPos(6, 1)
-    t.write(string.format("UnisonOS  %s  %s", node, role))
-    -- Focused app on the right.
+    local left = string.format(" UnisonOS  %s/%s ", node, role)
+    overlayText(t, 1, 1, left, colors.white, colors.cyan)
+
+    -- Focused app pill in the middle.
     local f = wm.focused()
-    local title = (f and f.title) or ""
-    local right = title and (" [ " .. title .. " ] ") or ""
-    local time = textutils.formatTime(os.time(), false)
-    local rstr = right .. " " .. time .. " "
-    t.setCursorPos(state.W - #rstr + 1, 1); t.write(rstr)
+    if f and f.title and f.id ~= "desk:launcher" then
+        local pill = " " .. f.title .. " "
+        local cx = math.max(#left + 2, math.floor((W - #pill) / 2))
+        overlayText(t, cx, 1, pill, colors.black, colors.yellow)
+    end
+
+    -- Clock right.
+    local time = " " .. textutils.formatTime(os.time(), false) .. " "
+    overlayText(t, W - #time + 1, 1, time, colors.white, colors.gray)
 end
 
 local function drawBottomBar(state)
+    local W, H = state.W, state.H
+    -- Two-tone strip: light grey top, darker grey bottom.
+    drawStrip(H, W, function(x)
+        local t = (x % 6 < 3) and colors.lightGray or colors.gray
+        local b = colors.gray
+        return t, b
+    end)
     local t = term.current()
-    t.setCursorPos(1, state.H)
-    t.setBackgroundColor(colors.lightGray)
-    t.setTextColor(colors.black)
-    local hint = " Tab cycle  |  Up/Down navigate  |  Enter open  |  x close  |  q quit "
-    if #hint > state.W then hint = hint:sub(1, state.W) end
-    hint = hint .. string.rep(" ", state.W - #hint)
-    t.write(hint)
+    local hint = " Tab cycle | 1-9 fast-launch | Up/Dn Enter | x close | q quit "
+    if #hint > W then hint = hint:sub(1, W) end
+    overlayText(t, 1, H, hint, colors.black, colors.lightGray)
 end
 
 ----------------------------------------------------------------------
--- Launcher window — uses pixel "icons" (colored squares) per app.
+-- Launcher (right-hand strip, drawn directly — not a WM window).
+-- Each entry is one cell tall: 1-cell pixel-art icon + label.
 ----------------------------------------------------------------------
 
-local function makeLauncher(state, openApp, quitDesktop, closeFocused)
-    local lw = 22
-    local lx = state.W - lw + 1
-    local sel = 1
+local LAUNCHER_W = 22
 
-    return {
-        id = "desk:launcher",
-        x = lx, y = 2, w = lw, h = state.H - 2,
-        title = nil, focusable = true,
-        render = function(self, _)
-            local t = term.current()
-            -- Background panel.
-            for row = 0, self.h - 1 do
-                t.setCursorPos(self.x, self.y + row)
-                t.setBackgroundColor(colors.black)
-                t.write(string.rep(" ", self.w))
-            end
-            -- Header strip.
-            t.setCursorPos(self.x, self.y)
-            t.setBackgroundColor(colors.gray); t.setTextColor(colors.white)
-            t.write(" Apps" .. string.rep(" ", self.w - 5))
+local function drawLauncher(state, sel)
+    local W, H = state.W, state.H
+    local lx = W - LAUNCHER_W + 1
+    local ly = 2
+    local lh = H - 2
+    local t = term.current()
 
-            -- Each app row: 2-cell colored "icon" + space + title.
-            local rowY = self.y + 2
-            for i, app in ipairs(state.apps) do
-                if rowY >= self.y + self.h - 2 then break end
-                local label = string.format("%d %s", i, app.title or app.id)
-                if #label > self.w - 5 then label = label:sub(1, self.w - 5) end
-                -- icon
-                t.setCursorPos(self.x + 1, rowY)
-                t.setBackgroundColor(iconColor(app.id or app.title))
-                t.write("  ")
-                -- gap + label
-                t.setBackgroundColor((i == sel) and colors.yellow or colors.black)
-                t.setTextColor((i == sel) and colors.black or colors.white)
-                local rest = " " .. label .. string.rep(" ", self.w - 5 - #label)
-                t.write(rest)
-                rowY = rowY + 1
-            end
+    -- Background panel (cells).
+    for row = 0, lh - 1 do
+        t.setCursorPos(lx, ly + row)
+        t.setBackgroundColor(colors.black)
+        t.write(string.rep(" ", LAUNCHER_W))
+    end
 
-            -- Footer: ascii actions.
-            t.setCursorPos(self.x, self.y + self.h - 1)
-            t.setBackgroundColor(colors.gray); t.setTextColor(colors.lightGray)
-            local foot = " 1-9 quick  Enter open"
-            if #foot > self.w then foot = foot:sub(1, self.w) end
-            t.write(foot .. string.rep(" ", self.w - #foot))
-        end,
-        onEvent = function(self, ev)
-            if ev[1] == "key" then
-                local k = ev[2]
-                if k == keys.up   and sel > 1               then sel = sel - 1; return "consumed" end
-                if k == keys.down and sel < #state.apps     then sel = sel + 1; return "consumed" end
-                if k == keys.enter then openApp(state.apps[sel]); return "consumed" end
-                if k == keys.q then quitDesktop(); return "consumed" end
-                if k == keys.x then closeFocused(); return "consumed" end
-            elseif ev[1] == "char" then
-                local n = tonumber(ev[2])
-                if n and state.apps[n] then openApp(state.apps[n]); return "consumed" end
-                if ev[2] == "q" then quitDesktop(); return "consumed" end
-                if ev[2] == "x" then closeFocused(); return "consumed" end
-            end
-        end,
-    }
+    -- Header with cyan accent strip drawn as 1-cell pixel band.
+    drawStrip(ly, LAUNCHER_W, function(x)
+        local pos = ((x - 1) % 5)
+        local fg = (pos < 2) and colors.cyan or colors.lightBlue
+        return fg, colors.gray
+    end)
+    overlayText(t, lx, ly, " Apps", colors.white, colors.cyan)
+
+    -- Entries.
+    for i, app in ipairs(state.apps) do
+        local row = ly + 1 + i
+        if row >= ly + lh - 1 then break end
+        local selected = (i == sel)
+        local rowBg = selected and colors.yellow or colors.black
+        local rowFg = selected and colors.black or colors.white
+
+        -- Icon: 1 cell painted as a 2-pixel coloured tile via half-block.
+        -- We give it a "shaded" feel: top half = base colour, bottom half = darker.
+        local hue = iconColor(app.id or app.title)
+        t.setCursorPos(lx + 1, row)
+        t.blit(HALF_BLOCK, HEX[hue] or "0", HEX[colors.gray] or "7")
+
+        -- Number + title.
+        local label = string.format(" %d %s", i, app.title or app.id)
+        if #label > LAUNCHER_W - 4 then label = label:sub(1, LAUNCHER_W - 4) end
+        local pad = LAUNCHER_W - 3 - #label
+        overlayText(t, lx + 2, row, label .. string.rep(" ", math.max(0, pad)),
+            rowFg, rowBg)
+    end
+
+    -- Footer hint inside launcher.
+    overlayText(t, lx, ly + lh - 1,
+        string.rep(" ", LAUNCHER_W - 1):sub(1, LAUNCHER_W),
+        colors.lightGray, colors.gray)
+    overlayText(t, lx, ly + lh - 1, " 1-9 quick  Enter open ",
+        colors.black, colors.gray)
 end
 
 ----------------------------------------------------------------------
--- Run loop. We don't reuse wm.run() because we need our own redraw
--- sequence (top/bottom chrome painted directly each frame, then WM
--- paints windows on top).
+-- Run loop
 ----------------------------------------------------------------------
 
 function M.run(opts)
@@ -198,43 +243,88 @@ function M.run(opts)
         if appAllowedHere(a, role) then apps[#apps + 1] = a end
     end
 
-    local state = { W = W, H = H, apps = apps, openWindows = {}, running = true }
+    local state = {
+        W = W, H = H, apps = apps,
+        openWindows = {}, running = true,
+        sel = 1,
+        focusOnLauncher = true,
+    }
 
     local function openApp(app)
         if not (app and app.make) then return end
         local existing = state.openWindows[app.id]
-        if existing and existing.visible then wm.focus(existing); return end
-        local lw = 22
+        if existing and existing.visible then
+            wm.focus(existing); state.focusOnLauncher = false; return
+        end
+        -- App workspace = everything left of the launcher, between top and bottom bars.
         local win = app.make({
-            x = 1, y = 2, w = W - lw, h = H - 2,
+            x = 1, y = 2, w = W - LAUNCHER_W, h = H - 2,
         })
         win.title = win.title or app.title or app.id
         state.openWindows[app.id] = win
         wm.add(win); wm.focus(win)
+        state.focusOnLauncher = false
     end
 
     local function closeFocused()
         local f = wm.focused()
-        if not f or not f.id or f.id == "desk:launcher" then return end
+        if not f then return end
         for id, w in pairs(state.openWindows) do
             if w == f then state.openWindows[id] = nil; break end
         end
         wm.remove(f)
+        state.focusOnLauncher = true
     end
 
     local function quitDesktop() state.running = false end
 
-    local launcher = makeLauncher(state, openApp, quitDesktop, closeFocused)
-    wm.add(launcher)
-    wm.focus(launcher)
+    -- Input handler that's NOT a WM window (so we draw the launcher
+    -- directly, but route keys based on focus state).
+    local function handleKey(ev)
+        if state.focusOnLauncher then
+            if ev[1] == "key" then
+                local k = ev[2]
+                if k == keys.up   and state.sel > 1                then state.sel = state.sel - 1 end
+                if k == keys.down and state.sel < #state.apps      then state.sel = state.sel + 1 end
+                if k == keys.enter then openApp(state.apps[state.sel]) end
+                if k == keys.tab then
+                    if next(state.openWindows) then
+                        state.focusOnLauncher = false
+                        wm.cycleFocus(1)
+                    end
+                end
+            elseif ev[1] == "char" then
+                local c = ev[2]
+                local n = tonumber(c)
+                if n and state.apps[n] then openApp(state.apps[n])
+                elseif c == "q" then quitDesktop()
+                elseif c == "x" then closeFocused()
+                end
+            end
+        else
+            -- Forward to focused window first; intercept Tab/x/q.
+            if ev[1] == "key" and ev[2] == keys.tab then
+                wm.cycleFocus(1)
+                if not wm.focused() then state.focusOnLauncher = true end
+                return
+            end
+            if ev[1] == "char" then
+                if ev[2] == "x" then closeFocused(); return end
+            end
+            local f = wm.focused()
+            if f and f.onEvent then pcall(f.onEvent, f, ev) end
+        end
+    end
 
-    term.setBackgroundColor(colors.black)
-    term.clear()
+    term.setBackgroundColor(colors.black); term.clear()
 
     local function fullRender()
         term.setBackgroundColor(colors.black); term.clear()
+        -- Apps go in the workspace; WM draws each window's box and body.
         wm.render()
+        -- Chrome on top.
         drawTopBar(state)
+        drawLauncher(state, state.sel)
         drawBottomBar(state)
     end
     fullRender()
@@ -257,14 +347,7 @@ function M.run(opts)
             tickTimer = os.startTimer(1 / TICK_HZ)
             needsRender = true
         elseif INPUT_EVENTS[ev[1]] then
-            if ev[1] == "key" and ev[2] == keys.tab then
-                wm.cycleFocus(1)
-            else
-                local f = wm.focused()
-                if f and f.onEvent then
-                    pcall(f.onEvent, f, ev)
-                end
-            end
+            handleKey(ev)
             needsRender = true
         end
         if needsRender then fullRender() end

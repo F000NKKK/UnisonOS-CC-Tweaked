@@ -44,7 +44,16 @@ local function readState()
     local fn = loadfile(STATE_FILE)
     if not fn then return {} end
     local ok, t = pcall(fn)
-    return (ok and type(t) == "table") and t or {}
+    if not (ok and type(t) == "table") then return {} end
+    -- Migration: anything still pinned at scale=1 was the old default
+    -- before we made 0.5 (max area, smallest text) the new default.
+    -- Bump it so existing monitors switch over without manual config.
+    if t.monitors then
+        for _, s in pairs(t.monitors) do
+            if s.scale == 1 or s.scale == nil then s.scale = 0.5 end
+        end
+    end
+    return t
 end
 
 local function writeState(t)
@@ -142,7 +151,7 @@ end
 local function defaultConfig(monitors)
     local mc = {}
     for _, mon in ipairs(monitors) do
-        mc[mon.name] = { enabled = true, scale = 1, background = colors.black }
+        mc[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
     end
     return { mirror_all = true, monitors = mc }
 end
@@ -155,7 +164,7 @@ function M.start(cfgOverride)
     else
         for _, mon in ipairs(state.monitors) do
             if not persisted.monitors[mon.name] then
-                persisted.monitors[mon.name] = { enabled = true, scale = 1, background = colors.black }
+                persisted.monitors[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
             end
         end
     end
@@ -217,7 +226,7 @@ function M.refresh()
     state.monitors = discoverMonitors()
     for _, mon in ipairs(state.monitors) do
         if not state.cfg.monitors[mon.name] then
-            state.cfg.monitors[mon.name] = { enabled = true, scale = 1, background = colors.black }
+            state.cfg.monitors[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
         end
     end
     writeState(state.cfg)
