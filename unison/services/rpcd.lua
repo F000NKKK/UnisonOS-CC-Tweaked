@@ -305,6 +305,7 @@ function M.run()
             type = "pong",
             from = tostring(os.getComputerID()),
             in_reply_to = env.id,
+            client_ts = msg.ts,            -- echo so caller can compute RTT
             ts = os.epoch("utc"),
         })
     end)

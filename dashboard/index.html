@@ -517,8 +517,11 @@
     const from = body.from || (envelope.from) || '?';
     const t = body.type || '?';
     if (t === 'pong') {
+      // Use our own send-timestamp echoed back by the device. Avoids
+      // clock-skew between the MC server and the browser.
+      const rtt = body.client_ts ? (Date.now() - body.client_ts) : null;
       logEvent('in', { who: '← ' + from, tag: 'pong',
-        body: 'rtt ' + (body.ts ? (Date.now() - body.ts) + 'ms' : '?') });
+        body: rtt != null ? 'rtt ' + rtt + 'ms' : 'rtt ?' });
       return;
     }
     if (t === 'exec_reply') {
