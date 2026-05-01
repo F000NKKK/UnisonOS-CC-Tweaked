@@ -207,6 +207,7 @@
   <a data-tab="storage">Storage <span class="badge" id="badge-storage">0</span></a>
   <a data-tab="redstone">Redstone <span class="badge" id="badge-redstone">0</span></a>
   <a data-tab="map">Map</a>
+  <a data-tab="events">Events</a>
   <a data-tab="cron">Cron</a>
   <a data-tab="logs">Logs</a>
 </nav>
@@ -321,6 +322,15 @@
     </section>
   </div>
 
+  <!-- ==================== Events ==================== -->
+  <div class="page" id="page-events" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Live activity — atlas events stream from all turtles</span>
+        <span class="right small">refreshes every 2s</span></h2>
+      <div class="body" id="events-body" style="padding: 6px 10px;"></div>
+    </section>
+  </div>
+
   <!-- ==================== Cron ==================== -->
   <div class="page" id="page-cron" hidden>
     <section class="panel" style="height: 100%;">
@@ -370,6 +380,23 @@
     </section>
   </div>
 </main>
+
+<!-- Toast notifications (key events surfaced from heartbeat / replies) -->
+<div id="toasts" style="
+  position: fixed; bottom: 16px; right: 16px; z-index: 200;
+  display: flex; flex-direction: column-reverse; gap: 6px; max-width: 360px;"></div>
+
+<!-- Device log tail modal -->
+<div class="modal-overlay" id="logmodal" hidden>
+  <div class="modal-card" style="width: min(900px, 95vw); height: min(70vh, 600px);">
+    <header style="display: flex; gap: 12px; align-items: center;">
+      <h2 id="logmodal-title">Logs</h2>
+      <button id="logmodal-refresh" style="margin-left: auto;">refresh</button>
+      <button id="logmodal-close">close</button>
+    </header>
+    <div class="body" id="logmodal-body" style="font: 11px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap;"></div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="device-modal" hidden>
   <div class="modal-card">
@@ -671,6 +698,9 @@
       if (activeTab === 'map')  renderMap();
       if (activeTab === 'cron')  populateCronDevices();
       if (activeTab === 'redstone') renderRedstone();
+      if (activeTab === 'events') refreshEvents();
+      // Diff-based toast notifications.
+      try { notifyChanges(devices); } catch (_) {}
     } catch (e) {
       $('conn-status').textContent = 'offline (' + e.message + ')';
       $('conn-status').style.color = 'var(--err)';
@@ -684,6 +714,7 @@
       tr.classList.toggle('selected', tr.dataset.id === id);
     });
     renderSelectedDetail();
+    try { localStorage.setItem('unison-selected', id || ''); } catch (_) {}
   }
 
   function renderSelectedDetail() {
@@ -707,10 +738,15 @@
         <div class="k">Inventory</div>   <div class="v">${m.inventory_used ?? '-'} / 16</div>
         <div class="k">Position</div>    <div class="v">${pos ? `${pos.x},${pos.y},${pos.z} (${escapeHtml(m.position_source || '?')})` : '-'}</div>
       </div>
-      <div style="margin-top: 10px;"><button id="dev-detail-more">more / actions →</button></div>
+      <div style="margin-top: 10px;">
+        <button id="dev-detail-more">more / actions →</button>
+        <button id="dev-detail-logs">logs</button>
+      </div>
     `;
     const more = document.getElementById('dev-detail-more');
     if (more) more.addEventListener('click', () => openDeviceDetail(selectedId));
+    const lg = document.getElementById('dev-detail-logs');
+    if (lg) lg.addEventListener('click', () => openDeviceLog(selectedId));
   }
 
   function openDeviceDetail(id) {
@@ -939,6 +975,116 @@
     });
   }
 
+  // ---- Toast notifications --------------------------------------------
+
+  function toast(message, kind) {
+    const div = document.createElement('div');
+    div.style.cssText =
+      'background: var(--panel); border: 1px solid ' +
+      (kind === 'err' ? 'var(--err)' : kind === 'warn' ? 'var(--warn)' : 'var(--ok)') +
+      '; border-radius: 6px; padding: 8px 12px; font-size: 12px;' +
+      'color: var(--text); box-shadow: 0 4px 12px rgba(0,0,0,0.4);' +
+      'animation: slideIn 0.2s ease;';
+    div.textContent = message;
+    $('toasts').appendChild(div);
+    setTimeout(() => {
+      div.style.opacity = '0';
+      div.style.transition = 'opacity 0.4s';
+      setTimeout(() => div.remove(), 400);
+    }, 5000);
+  }
+
+  // Surface key state transitions as toasts. Diff against the previous
+  // device snapshot so we only notify on edges, not every heartbeat.
+  let _prevSnapshot = {};
+  function notifyChanges(currentDevices) {
+    for (const [id, d] of Object.entries(currentDevices)) {
+      const prev = _prevSnapshot[id];
+      const m = d.metrics || {};
+      const pm = (prev && prev.metrics) || {};
+      // Mine: phase transitions.
+      if (m.mine && pm.mine && m.mine.phase !== pm.mine.phase) {
+        const phase = m.mine.phase;
+        if (phase === 'done')   toast(`✓ ${id} mine: done (dug ${m.mine.dug || 0})`, 'ok');
+        if (phase === 'paused') toast(`⚠ ${id} mine paused — ${m.mine.error || 'unknown'}`, 'warn');
+      }
+      // Fuel low edge for turtles.
+      if (m.fuel != null && pm.fuel != null) {
+        if (m.fuel < 200 && pm.fuel >= 200)  toast(`⛽ ${id} fuel low: ${m.fuel}`, 'warn');
+        if (m.fuel === 0 && pm.fuel > 0)     toast(`✗ ${id} OUT OF FUEL`, 'err');
+      }
+    }
+    _prevSnapshot = JSON.parse(JSON.stringify(currentDevices));
+  }
+
+  // ---- Events page ----------------------------------------------------
+
+  let _eventsSinceTs = 0;
+  let _eventsBuffer = [];
+
+  async function refreshEvents() {
+    try {
+      const data = await api('/api/atlas/events?since=' + _eventsSinceTs + '&limit=200');
+      const fresh = (data && data.events) || [];
+      for (const e of fresh) {
+        _eventsBuffer.push(e);
+        if (e.ts > _eventsSinceTs) _eventsSinceTs = e.ts;
+      }
+      while (_eventsBuffer.length > 500) _eventsBuffer.shift();
+      renderEventsBody();
+    } catch (_) {}
+  }
+
+  function renderEventsBody() {
+    const body = $('events-body');
+    if (_eventsBuffer.length === 0) {
+      body.innerHTML = '<span class="small">no events yet — turtles will start streaming as they work</span>';
+      return;
+    }
+    const last = _eventsBuffer.slice(-200).reverse();
+    body.innerHTML = last.map(e => {
+      const t = new Date(e.ts).toLocaleTimeString();
+      const coord = (e.wx != null) ? `${e.wx},${e.wy},${e.wz}` :
+                    (e.x != null)  ? `(rel) ${e.x},${e.y},${e.z}` : '';
+      const kindCol = e.kind && e.kind.indexOf('dig') === 0 ? 'var(--accent)' :
+                       e.kind === 'job_done' ? 'var(--ok)' :
+                       e.kind === 'job_paused' ? 'var(--warn)' :
+                       'var(--text)';
+      return `<div class="ev"><div class="head">
+        <span>${t}</span>
+        <span class="who">${escapeHtml(e.by || '?')}</span>
+        <span style="color:${kindCol}">${escapeHtml(e.kind || '')}</span>
+        <span class="small">${escapeHtml(coord)}</span>
+      </div></div>`;
+    }).join('');
+  }
+
+  // ---- Device-log modal -----------------------------------------------
+
+  let _logModalDeviceId = null;
+  async function openDeviceLog(id) {
+    _logModalDeviceId = id;
+    $('logmodal-title').textContent = `Logs — ${id}`;
+    $('logmodal-body').textContent = 'fetching…';
+    $('logmodal').hidden = false;
+    await refreshDeviceLog();
+  }
+  async function refreshDeviceLog() {
+    if (!_logModalDeviceId) return;
+    try {
+      const reply = await rpc(_logModalDeviceId,
+        { type: 'exec', command: 'cat /unison/logs/current.log' }, 8000);
+      const out = reply.output || '(no output)';
+      // Trim to last 200 lines for readability.
+      const lines = out.split('\n');
+      const tail = lines.slice(-200).join('\n');
+      $('logmodal-body').textContent = tail;
+      $('logmodal-body').scrollTop = $('logmodal-body').scrollHeight;
+    } catch (e) {
+      $('logmodal-body').textContent = 'fetch failed: ' + e.message;
+    }
+  }
+
   // ---- Storage page ----------------------------------------------------
 
   async function refreshStorage() {
@@ -1159,6 +1305,9 @@
     if (name === 'atlas')    refreshAtlas();
     if (name === 'storage')  refreshStorage();
     if (name === 'redstone') renderRedstone();
+    if (name === 'events')   refreshEvents();
+    // Persist active tab so refresh doesn't kick you back to Devices.
+    try { localStorage.setItem('unison-tab', name); } catch (_) {}
     if (name === 'cron')  { populateCronDevices(); refreshCron(); }
   }
 
@@ -1253,6 +1402,10 @@
 
   $('atlas-refresh').addEventListener('click', refreshAtlas);
   $('atlas-add').addEventListener('click', atlasAdd);
+  $('logmodal-close').addEventListener('click', () => {
+    $('logmodal').hidden = true; _logModalDeviceId = null;
+  });
+  $('logmodal-refresh').addEventListener('click', refreshDeviceLog);
   $('storage-refresh').addEventListener('click', refreshStorage);
   $('storage-filter').addEventListener('input', () => {
     if (window._storFilter) clearTimeout(window._storFilter);
@@ -1267,7 +1420,18 @@
 
   // Boot — start() first so cfg is loaded before any tab tries to fetch.
   start();
-  showTab((location.hash || '#devices').slice(1));
+  // Restore last tab; hash takes precedence so deep links still work.
+  let initialTab = (location.hash || '').slice(1);
+  if (!initialTab) {
+    try { initialTab = localStorage.getItem('unison-tab') || 'devices'; }
+    catch (_) { initialTab = 'devices'; }
+  }
+  showTab(initialTab);
+  // Restore last selected device.
+  try {
+    const sd = localStorage.getItem('unison-selected');
+    if (sd) selectedId = sd;
+  } catch (_) {}
 })();
 </script>
 </body>
