@@ -7,6 +7,7 @@ local role_lib = dofile("/unison/kernel/role.lua")
 local httpLib  = dofile("/unison/lib/http.lua")
 local fsLib    = dofile("/unison/lib/fs.lua")
 local jsonLib  = dofile("/unison/lib/json.lua")
+local sha256_  = dofile("/unison/crypto/sha256.lua")
 local sources_mod = dofile("/unison/pm/sources.lua")
 
 local M = {}
@@ -57,11 +58,62 @@ local function manifestFiles(manifest)
     return out
 end
 
-local function stage(files)
+-- Hash a file's bytes with sha256 and return hex. Returns nil if the
+-- file doesn't exist.
+local function hashLocal(rel)
+    local path = "/" .. rel
+    if not fs.exists(path) then return nil end
+    local h = fs.open(path, "rb")
+    if not h then return nil end
+    local body = h.readAll() or ""
+    h.close()
+    return sha256_.hex(body)
+end
+
+-- Decide which files of the manifest's role list actually need to be
+-- (re-)downloaded. If the manifest provides a checksums map (added by
+-- tools/build-manifest.py), local files matching the remote hash are
+-- skipped — only differing or missing files are fetched. With no
+-- checksums (legacy manifest) we fall back to the old behaviour and
+-- fetch every file.
+local function planStage(manifest, files)
+    local checksums = manifest.checksums or {}
+    local toFetch, skipped = {}, 0
+    for _, rel in ipairs(files) do
+        local remote = checksums[rel]
+        if not remote then
+            -- Unknown remote hash → fetch (legacy / new file added).
+            toFetch[#toFetch + 1] = rel
+        else
+            local local_ = hashLocal(rel)
+            if local_ == remote then
+                skipped = skipped + 1
+            else
+                toFetch[#toFetch + 1] = rel
+            end
+        end
+    end
+    return toFetch, skipped
+end
+
+local function stage(files, manifest)
     fsLib.deleteIf(STAGING_DIR)
     fs.makeDir(STAGING_DIR)
-    for i, rel in ipairs(files) do
-        write(string.format("  [%2d/%2d] %s ... ", i, #files, rel))
+
+    local toFetch, skipped = planStage(manifest, files)
+    if #toFetch == 0 then
+        print("no file changes (" .. skipped .. " up-to-date)")
+        return true
+    end
+    if skipped > 0 then
+        print(string.format("delta: %d to download, %d up-to-date",
+            #toFetch, skipped))
+    else
+        print(string.format("downloading %d file(s)", #toFetch))
+    end
+
+    for i, rel in ipairs(toFetch) do
+        write(string.format("  [%2d/%2d] %s ... ", i, #toFetch, rel))
         local body, err = fetchRel(rel)
         if not body then
             print("fail (" .. tostring(err) .. ")")
@@ -96,8 +148,8 @@ function M.applyManifest(manifest, opts)
     print(">>> UnisonOS upgrade -> " .. manifest.version .. " <<<")
 
     local files = manifestFiles(manifest)
-    print("staging " .. #files .. " file(s)...")
-    local ok, perr = stage(files)
+    print("checking " .. #files .. " file(s) for changes...")
+    local ok, perr = stage(files, manifest)
     if not ok then
         log.warn("os-updater", "staging failed: " .. tostring(perr))
         fsLib.deleteIf(STAGING_DIR)
