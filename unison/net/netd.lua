@@ -187,8 +187,8 @@ function M.start()
         print("")
     end
 
-    unison.kernel.scheduler.spawn(rxLoop, "netd-rx")
-    unison.kernel.scheduler.spawn(helloLoop, "netd-tx")
+    unison.kernel.scheduler.spawn(rxLoop,    "netd-rx",    { group = "system" })
+    unison.kernel.scheduler.spawn(helloLoop, "netd-tx",    { group = "system" })
 
     if not isMaster() and not auth.hasOwnKey() then
         unison.kernel.scheduler.spawn(function()
@@ -198,7 +198,7 @@ function M.start()
                 sleep(3)
             end
             log.info("netd", "node enrolled, key acquired")
-        end, "netd-enroll")
+        end, "netd-enroll", { group = "system" })
     end
 end
 

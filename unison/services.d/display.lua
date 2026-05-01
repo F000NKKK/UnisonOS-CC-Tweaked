@@ -12,7 +12,7 @@ return {
         disp.start(cfg)
         unison.display = disp
         if unison.kernel and unison.kernel.scheduler and disp.periodicRefreshLoop then
-            unison.kernel.scheduler.spawn(disp.periodicRefreshLoop, "display-refresh")
+            unison.kernel.scheduler.spawn(disp.periodicRefreshLoop, "display-refresh", { group = "system" })
         end
     end,
 

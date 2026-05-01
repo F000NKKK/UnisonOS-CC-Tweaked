@@ -117,7 +117,7 @@ local function spawnSupervised(unit, cfg)
             log.info("services", unit.name .. " respawning in " .. unit.restart_sec .. "s")
             sleep(unit.restart_sec)
         end
-    end, unit.name)
+    end, unit.name, { group = "system" })
 
     s.pid = pid
     s.status = STATES.RUNNING

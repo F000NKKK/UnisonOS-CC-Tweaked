@@ -402,9 +402,9 @@ function M.run()
     end)
 
     local sched = unison.kernel.scheduler
-    sched.spawn(wsLoop, "rpcd-ws")
-    sched.spawn(pollLoop, "rpcd-poll")
-    sched.spawn(heartbeatLoop, "rpcd-hb")
+    sched.spawn(wsLoop,        "rpcd-ws",   { group = "system" })
+    sched.spawn(pollLoop,      "rpcd-poll", { group = "system" })
+    sched.spawn(heartbeatLoop, "rpcd-hb",   { group = "system" })
 end
 
 return M

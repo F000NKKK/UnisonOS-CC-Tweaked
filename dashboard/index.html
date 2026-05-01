@@ -333,8 +333,8 @@
           <button data-quick="version">version</button>
           <button data-quick="service list">services</button>
           <button data-quick="upm list">pkgs</button>
-          <button data-quick="upm upgrade -y">upgrade</button>
-          <button data-quick="reboot" class="danger">reboot</button>
+          <button data-quick="upm upgrade -y -f">upgrade</button>
+          <button data-quick="reboot -f" class="danger">reboot</button>
         </span>
       </div>
     </section>
@@ -693,8 +693,8 @@
       { label: 'version', cmd: 'version' },
       { label: 'service list', cmd: 'service list' },
       { label: 'upm list', cmd: 'upm list' },
-      { label: 'upm upgrade', cmd: 'upm upgrade -y' },
-      { label: 'reboot', cmd: 'reboot', danger: true },
+      { label: 'upm upgrade', cmd: 'upm upgrade -y -f' },
+      { label: 'reboot', cmd: 'reboot -f', danger: true },
     ];
     if (d.role === 'turtle') {
       buttons.splice(2, 0,
@@ -1120,9 +1120,13 @@
     b.addEventListener('click', () => execOn(selectedId, b.dataset.quick));
   });
 
-  $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y', 'OS upgrade'));
+  // Bulk + per-device commands run with -f so they don't get stuck on
+  // 'busy' (mine etc.) — system services are now tagged group=system
+  // and don't trigger the busy guard, so -f only matters when there's
+  // an actual user job; the dashboard click is the explicit override.
+  $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y -f', 'OS upgrade'));
   $('bulk-update-pkg').addEventListener('click', () => bulkExec('upm update', 'package update'));
-  $('bulk-reboot').addEventListener('click', () => bulkExec('reboot', 'reboot'));
+  $('bulk-reboot').addEventListener('click', () => bulkExec('reboot -f', 'reboot'));
 
   document.querySelectorAll('nav.tabs a').forEach(a => {
     a.addEventListener('click', () => { location.hash = '#' + a.dataset.tab; });
