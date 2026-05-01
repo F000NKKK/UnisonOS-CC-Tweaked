@@ -41,7 +41,7 @@
     "unison/rpc/client.lua": "d4c42c002b403add465e85cc239a5d399e5a4149ac0130ce600d81d7511a3d2c",
     "unison/services.d/crond.lua": "ff3d717dfb37cb93411c1e252b4774a8098497e90e411e79d73296543fed06bb",
     "unison/services.d/disk-updater.lua": "08130159ed4505caa8d6460fda6d4869ea9af6dac0c685330ff202d7bb0f1aad",
-    "unison/services.d/display.lua": "faf8af0860d096404ff4cca970f5853a73aaf4cd2a53324bf3197eb6012f7b91",
+    "unison/services.d/display.lua": "32086b1715c76b0ab8891227c0d29ee764bc55d4ece661ed765e785403f3d56d",
     "unison/services.d/gps-host.lua": "fe8b966fededbe3decf256206f2b84070b43e2166d4449d4dad1bf14f514c7f2",
     "unison/services.d/netd.lua": "cc72d65b7c959f227c159748833d140dc70857542200407d4158da3610e66b5a",
     "unison/services.d/os-updater.lua": "6d33c1561c14d56887ad880cf639974f52751f67da766ad18be09d754ff0b038",
@@ -49,7 +49,7 @@
     "unison/services.d/shell.lua": "2e40369c9bc8ff441df35df37b93f04e8fe9f08abfa89b1518864b9eac831aa3",
     "unison/services/crond.lua": "ceeb3273b72f0366a5b88671cda9c6d1b414c2bef7f379f4115c132fcd8270ae",
     "unison/services/disk_updater.lua": "d297c13aa42b7757e6f8e3023e80f7266cd5cd04ee8b74ac2c34ec16e7fff14f",
-    "unison/services/display.lua": "aa010ebe9075ea43c490f0fa7ea59893665722c445d581f4ecf7a454bf11434f",
+    "unison/services/display.lua": "6471083599bad673bfd2c2b91d3f8563a20a8ae69433206b5f483e4d68a35723",
     "unison/services/gps_host.lua": "91e8db7e9b09603750258443fef6873a1e39f509b7add867c58c161fbd3c2789",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
     "unison/services/rpcd.lua": "a78df57e925da9841f4820b81ecb64ef4daab5d17b74725648e77124e7d5001e",
@@ -99,7 +99,7 @@
     "unison/ui/apps/procs.lua": "a287d8047a02201beddf42a5e308ae929de331a9725f54dbe2b57cdf1785c830",
     "unison/ui/apps/services.lua": "95384fa0f481d08889b0961dcb7b501a48cfdbc7b2ea8a028f74b7cd4c0ec0b9",
     "unison/ui/buffer.lua": "5cd21de700aa6709eab348b12eb740d76c1ae3d410277a208c1940ae60467d6b",
-    "unison/ui/desktop.lua": "092ce74eb323afcb845e8db71ddcae801217a13c6c1bf98dd03c1c5a0b5be1bc",
+    "unison/ui/desktop.lua": "5f7539e78a3962898f6068563130ecb222377f9c383817824567a54cf0fc662b",
     "unison/ui/widgets.lua": "451c25b56a3bf1c47b378d5f5aa70cb90527ddb6c3b91c5ffbd3716c7de77468",
     "unison/ui/wm.lua": "f3677e17045e09d0d63fe8e67bc311f89f0b979803533f9f658a91be64f99e0c"
   },
@@ -218,5 +218,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.17.1"
+  "version": "0.17.2"
 }

@@ -278,11 +278,44 @@ function M.run(opts)
 
     local function quitDesktop() state.running = false end
 
+    -- Detect clicks on the launcher. Returns app index (1..N) or nil.
+    local function launcherClickToApp(mx, my)
+        local lx = state.W - LAUNCHER_W + 1
+        if mx < lx or mx > state.W then return nil end
+        if my < 3 then return nil end       -- header row at ly=2; entries from ly+1+i
+        if my >= state.H then return nil end
+        -- Entry rows: my = 2 + 1 + i  →  i = my - 3
+        local i = my - 3
+        if i >= 1 and i <= #state.apps then return i end
+        return nil
+    end
+
     -- Input handler that's NOT a WM window (so we draw the launcher
-    -- directly, but route keys based on focus state).
+    -- directly, but route keys/clicks based on focus state).
     local function handleKey(ev)
+        local kind = ev[1]
+
+        -- Mouse: clicks on the launcher always work, regardless of focus.
+        if kind == "mouse_click" or kind == "mouse_up" then
+            local mx, my = ev[3], ev[4]
+            local appIdx = launcherClickToApp(mx, my)
+            if appIdx then
+                if kind == "mouse_click" then
+                    state.sel = appIdx
+                    openApp(state.apps[appIdx])
+                end
+                return
+            end
+            -- Click outside launcher → app workspace; forward to focused win.
+            if not state.focusOnLauncher then
+                local f = wm.focused()
+                if f and f.onEvent then pcall(f.onEvent, f, ev) end
+            end
+            return
+        end
+
         if state.focusOnLauncher then
-            if ev[1] == "key" then
+            if kind == "key" then
                 local k = ev[2]
                 if k == keys.up   and state.sel > 1                then state.sel = state.sel - 1 end
                 if k == keys.down and state.sel < #state.apps      then state.sel = state.sel + 1 end
@@ -293,7 +326,7 @@ function M.run(opts)
                         wm.cycleFocus(1)
                     end
                 end
-            elseif ev[1] == "char" then
+            elseif kind == "char" then
                 local c = ev[2]
                 local n = tonumber(c)
                 if n and state.apps[n] then openApp(state.apps[n])
@@ -303,12 +336,12 @@ function M.run(opts)
             end
         else
             -- Forward to focused window first; intercept Tab/x/q.
-            if ev[1] == "key" and ev[2] == keys.tab then
+            if kind == "key" and ev[2] == keys.tab then
                 wm.cycleFocus(1)
                 if not wm.focused() then state.focusOnLauncher = true end
                 return
             end
-            if ev[1] == "char" then
+            if kind == "char" then
                 if ev[2] == "x" then closeFocused(); return end
             end
             local f = wm.focused()

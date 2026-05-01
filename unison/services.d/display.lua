@@ -17,6 +17,9 @@ return {
         if unison.kernel and unison.kernel.scheduler and disp.flushLoop then
             unison.kernel.scheduler.spawn(disp.flushLoop, "display-flush", { group = "system" })
         end
+        if unison.kernel and unison.kernel.scheduler and disp.touchLoop then
+            unison.kernel.scheduler.spawn(disp.touchLoop, "display-touch", { group = "system" })
+        end
     end,
 
     main = function(cfg)

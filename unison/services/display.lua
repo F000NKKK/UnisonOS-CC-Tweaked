@@ -464,14 +464,41 @@ function M.periodicRefreshLoop()
 end
 
 -- Monitor flush loop: paints the shadow buffer onto every attached
--- monitor at ~10Hz, scaling content nearest-neighbor so monitors of
--- any block-dimensions render the primary's full screen contents.
+-- monitor every game tick (50 ms — engine maximum). Each frame: clear
+-- the monitor and re-blit the shadow. Letterbox-centered.
 function M.flushLoop()
     while true do
-        sleep(0.1)
+        sleep(0.05)              -- ~20 Hz; CC ticks at 20 TPS, can't go faster
         if state.flushMonitors then
             pcall(state.flushMonitors)
         end
+    end
+end
+
+-- Monitor touch loop: CC emits `monitor_touch <side> <x> <y>` when a
+-- player clicks on a monitor. We translate the monitor cell coords back
+-- to primary terminal coords (reversing the letterbox offset) and queue
+-- an equivalent `mouse_click` event so apps that already handle mouse
+-- events Just Work — including the desktop launcher.
+function M.touchLoop()
+    while true do
+        local _, side, mx, my = os.pullEvent("monitor_touch")
+        local sh = state.shadow; if not sh then goto continue end
+        -- Find this monitor in our enabled list to read its size.
+        local mon = peripheral.wrap(side)
+        if not mon or not mon.getSize then goto continue end
+        local ok, mw, mh = pcall(mon.getSize)
+        if not ok or not mw then goto continue end
+        local offX = math.floor((mw - sh.w) / 2)
+        local offY = math.floor((mh - sh.h) / 2)
+        local sx = mx - offX
+        local sy = my - offY
+        if sx >= 1 and sx <= sh.w and sy >= 1 and sy <= sh.h then
+            -- Synthesise a left-click at the corresponding primary cell.
+            os.queueEvent("mouse_click", 1, sx, sy)
+            os.queueEvent("mouse_up", 1, sx, sy)
+        end
+        ::continue::
     end
 end
 
