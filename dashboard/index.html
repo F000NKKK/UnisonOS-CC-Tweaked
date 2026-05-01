@@ -204,6 +204,7 @@
   <a data-tab="devices" class="active">Devices <span class="badge" id="badge-devices">0</span></a>
   <a data-tab="mine">Mine <span class="badge" id="badge-mine">0</span></a>
   <a data-tab="atlas">Atlas</a>
+  <a data-tab="storage">Storage <span class="badge" id="badge-storage">0</span></a>
   <a data-tab="map">Map</a>
   <a data-tab="cron">Cron</a>
   <a data-tab="logs">Logs</a>
@@ -246,8 +247,9 @@
   <!-- ==================== Atlas ==================== -->
   <div class="page" id="page-atlas" hidden>
     <section class="panel" style="height:100%;">
-      <h2><span>Atlas — shared landmarks</span>
+      <h2><span>Atlas — shared landmarks (server-side)</span>
         <span class="right">
+          <span class="small" id="atlas-stats"></span>
           <button id="atlas-refresh">refresh</button>
         </span>
       </h2>
@@ -259,8 +261,6 @@
         <input id="atlas-z" placeholder="z" type="number" />
         <input id="atlas-tags" placeholder="tags (comma)" class="wide" />
         <button id="atlas-add" class="primary">add</button>
-        <span class="small">via host:</span>
-        <select id="atlas-host"></select>
       </div>
       <div class="body">
         <table>
@@ -268,6 +268,26 @@
             <th>Name</th><th>X</th><th>Y</th><th>Z</th><th>Tags</th><th>By</th><th></th>
           </tr></thead>
           <tbody id="atlas-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== Storage ==================== -->
+  <div class="page" id="page-storage" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Storage — aggregated pool across all nodes</span>
+        <span class="right">
+          <input id="storage-filter" type="text" placeholder="filter…" style="width: 180px;" />
+          <button id="storage-refresh">refresh</button>
+        </span>
+      </h2>
+      <div class="body">
+        <table>
+          <thead><tr>
+            <th>Item</th><th>Total</th><th>By device</th>
+          </tr></thead>
+          <tbody id="storage-tbody"></tbody>
         </table>
       </div>
     </section>
@@ -638,7 +658,6 @@
       // Update tab-specific data after a refresh.
       if (activeTab === 'mine') renderMine();
       if (activeTab === 'map')  renderMap();
-      if (activeTab === 'atlas') populateAtlasHosts();
       if (activeTab === 'cron')  populateCronDevices();
     } catch (e) {
       $('conn-status').textContent = 'offline (' + e.message + ')';
@@ -788,38 +807,24 @@
 
   // ---- Atlas page ------------------------------------------------------
 
-  function populateAtlasHosts() {
-    const live = liveDevices();
-    const sel = $('atlas-host');
-    const cur = sel.value;
-    sel.innerHTML = '';
-    // Any non-pocket non-turtle is a likely atlas host. We don't filter
-    // by capability since atlas can also run on a master / computer.
-    const ids = Object.keys(live).sort();
-    for (const id of ids) {
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = `${id}  (${live[id].role || '?'})`;
-      sel.appendChild(opt);
-    }
-    if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
-  }
-
+  // Atlas via the server-side store (HTTP /api/atlas/...). The old
+  // RPC-to-host model went away with the move to a shared map.
   async function refreshAtlas() {
-    const host = $('atlas-host').value;
-    if (!host) return;
+    const tbody = $('atlas-tbody');
     try {
-      const reply = await rpc(host, { type: 'atlas_list' }, 5000);
-      const items = reply.items || reply.landmarks || [];
-      const tbody = $('atlas-tbody');
+      const data = await api('/api/atlas/landmarks');
+      const items = (data && data.items) || [];
       tbody.innerHTML = '';
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="small">(no landmarks yet)</td></tr>';
+      }
       for (const it of items) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escapeHtml(it.name || '-')}</td>
           <td>${it.x}</td><td>${it.y}</td><td>${it.z}</td>
           <td>${escapeHtml((it.tags || []).join(','))}</td>
-          <td>${escapeHtml(it.added_by || '-')}</td>
+          <td>${escapeHtml(it.by || '-')}</td>
           <td><button class="danger" data-rm="${escapeHtml(it.name)}">delete</button></td>
         `;
         tbody.appendChild(tr);
@@ -828,32 +833,74 @@
         b.addEventListener('click', async () => {
           const name = b.dataset.rm;
           if (!confirm(`Remove "${name}"?`)) return;
-          try { await rpc(host, { type: 'atlas_remove', name }, 4000); } catch (_) {}
+          try {
+            await api('/api/atlas/landmarks/' + encodeURIComponent(name),
+                      { method: 'DELETE' });
+          } catch (_) {}
           refreshAtlas();
         });
       });
+      // Stats summary in the header.
+      try {
+        const s = await api('/api/atlas/stats');
+        $('atlas-stats').textContent =
+          (s.total || 0) + ' blocks indexed';
+      } catch (_) {}
     } catch (e) {
-      $('atlas-tbody').innerHTML =
-        `<tr><td colspan="7" class="small" style="color:var(--err);">atlas_list failed: ${escapeHtml(e.message)}</td></tr>`;
+      tbody.innerHTML =
+        `<tr><td colspan="7" class="small" style="color:var(--err);">atlas fetch failed: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
   async function atlasAdd() {
-    const host = $('atlas-host').value;
     const name = $('atlas-name').value.trim();
     const x = parseInt($('atlas-x').value, 10);
     const y = parseInt($('atlas-y').value, 10);
     const z = parseInt($('atlas-z').value, 10);
     const tags = $('atlas-tags').value.split(',').map(s => s.trim()).filter(Boolean);
-    if (!host || !name || isNaN(x) || isNaN(y) || isNaN(z)) {
-      logEvent('err', { who: 'atlas', body: 'name + xyz + host required' }); return;
+    if (!name || isNaN(x) || isNaN(y) || isNaN(z)) {
+      logEvent('err', { who: 'atlas', body: 'name + xyz required' }); return;
     }
     try {
-      await rpc(host, { type: 'atlas_add', name, x, y, z, tags }, 4000);
+      await api('/api/atlas/landmarks',
+        { method: 'POST', body: { name, x, y, z, tags, by: 'console' } });
       $('atlas-name').value = ''; $('atlas-tags').value = '';
       refreshAtlas();
     } catch (e) {
       logEvent('err', { who: 'atlas', body: 'add failed: ' + e.message });
+    }
+  }
+
+  // ---- Storage page ----------------------------------------------------
+
+  async function refreshStorage() {
+    const tbody = $('storage-tbody');
+    const filter = ($('storage-filter').value || '').trim();
+    try {
+      const path = '/api/atlas/storage' + (filter ? ('?pattern=' + encodeURIComponent(filter)) : '');
+      const data = await api(path);
+      const totals = (data && data.totals) || [];
+      $('badge-storage').textContent = totals.length;
+      tbody.innerHTML = '';
+      if (totals.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="small">(no items — no storage nodes pushing yet)</td></tr>';
+        return;
+      }
+      for (const t of totals) {
+        const breakdown = (t.devices || [])
+          .map(d => `${escapeHtml(d.device)}: ${d.count}`)
+          .join('  ');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(t.name)}</td>
+          <td>${t.count}</td>
+          <td class="small">${breakdown}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    } catch (e) {
+      tbody.innerHTML =
+        `<tr><td colspan="3" class="small" style="color:var(--err);">storage fetch failed: ${escapeHtml(e.message)}</td></tr>`;
     }
   }
 
@@ -1041,7 +1088,8 @@
       p.hidden = p.id !== ('page-' + name));
     if (name === 'mine') renderMine();
     if (name === 'map')  { renderMap(); attachMapHandlers(); }
-    if (name === 'atlas') { populateAtlasHosts(); refreshAtlas(); }
+    if (name === 'atlas')   refreshAtlas();
+    if (name === 'storage') refreshStorage();
     if (name === 'cron')  { populateCronDevices(); refreshCron(); }
   }
 
@@ -1136,7 +1184,11 @@
 
   $('atlas-refresh').addEventListener('click', refreshAtlas);
   $('atlas-add').addEventListener('click', atlasAdd);
-  $('atlas-host').addEventListener('change', refreshAtlas);
+  $('storage-refresh').addEventListener('click', refreshStorage);
+  $('storage-filter').addEventListener('input', () => {
+    if (window._storFilter) clearTimeout(window._storFilter);
+    window._storFilter = setTimeout(refreshStorage, 300);
+  });
 
   $('cron-refresh').addEventListener('click', refreshCron);
   $('cron-add').addEventListener('click', cronAdd);

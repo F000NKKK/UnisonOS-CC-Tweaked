@@ -63,6 +63,21 @@ class AtlasStore:
                 "CREATE INDEX IF NOT EXISTS idx_blocks_name ON blocks(name)")
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_blocks_y ON blocks(y)")
+
+            # Storage snapshot: per-(device, item) totals. Each storage
+            # node POSTs its full pool periodically and replaces its
+            # rows for that device — so removing items from a node
+            # propagates without manual deletes.
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS storage_items (
+                    device TEXT NOT NULL,
+                    name   TEXT NOT NULL,
+                    count  INTEGER NOT NULL,
+                    ts     INTEGER NOT NULL,
+                    PRIMARY KEY (device, name)
+                )""")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_storage_name ON storage_items(name)")
             self._conn.commit()
 
     def _read_json(self, path: str):
@@ -149,6 +164,58 @@ class AtlasStore:
         if not r:
             return None
         return {"x": x, "y": y, "z": z, "name": r[0], "by": r[1], "ts": r[2]}
+
+    # ---- storage --------------------------------------------------------
+
+    def replace_storage(self, device: str, items: list[dict]) -> int:
+        """Replace this device's full storage snapshot in one transaction.
+        items = [{name, count}, ...]."""
+        ts = _now_ms()
+        rows = []
+        for it in items or []:
+            n = str(it.get("name") or "")
+            c = int(it.get("count") or 0)
+            if n and c > 0:
+                rows.append((device, n, c, ts))
+        with self.lock:
+            self._conn.execute("DELETE FROM storage_items WHERE device=?", (device,))
+            if rows:
+                self._conn.executemany(
+                    "INSERT INTO storage_items(device,name,count,ts) VALUES(?,?,?,?)",
+                    rows)
+            self._conn.commit()
+        return len(rows)
+
+    def storage_items(self, *, name: str | None = None,
+                      device: str | None = None,
+                      pattern: str | None = None,
+                      limit: int = 5000) -> dict:
+        """Aggregate query: returns { totals=[...], breakdown=[...] }.
+        Each totals entry sums count across devices; breakdown is per-
+        (device,name) row."""
+        where = []; args = []
+        if device: where.append("device=?"); args.append(device)
+        if name:   where.append("name=?");   args.append(name)
+        if pattern:
+            where.append("name LIKE ?")
+            args.append("%" + pattern + "%")
+        sql = "SELECT device, name, count, ts FROM storage_items"
+        if where: sql += " WHERE " + " AND ".join(where)
+        sql += " LIMIT " + str(int(limit))
+        with self.lock:
+            cur = self._conn.execute(sql, args)
+            breakdown = [
+                {"device": r[0], "name": r[1], "count": r[2], "ts": r[3]}
+                for r in cur.fetchall()
+            ]
+        agg: dict[str, dict] = {}
+        for r in breakdown:
+            t = agg.setdefault(r["name"], {"name": r["name"], "count": 0, "devices": []})
+            t["count"] += r["count"]
+            t["devices"].append({"device": r["device"], "count": r["count"]})
+        totals = list(agg.values())
+        totals.sort(key=lambda x: -x["count"])
+        return {"totals": totals, "breakdown": breakdown}
 
     # ---- landmarks ------------------------------------------------------
 

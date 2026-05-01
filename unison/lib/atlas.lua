@@ -180,6 +180,24 @@ function M.removeLandmark(name)
     return false
 end
 
+-- Replace this device's storage snapshot on the server. items = list of
+-- { name = "minecraft:stone", count = 64 } pairs (one row per item id).
+-- The server clears any previous rows for this device before inserting.
+function M.pushStorage(items)
+    return post("storage", { by = deviceId(), items = items or {} })
+end
+
+-- Aggregated query: returns { totals = [...], breakdown = [...] }.
+-- opts.name / opts.device / opts.pattern are forwarded as query params.
+function M.queryStorage(opts)
+    opts = opts or {}
+    local q = {}
+    if opts.name    then q[#q + 1] = "name=" .. tostring(opts.name) end
+    if opts.device  then q[#q + 1] = "device=" .. tostring(opts.device) end
+    if opts.pattern then q[#q + 1] = "pattern=" .. tostring(opts.pattern) end
+    return decode(get("storage" .. (#q > 0 and ("?" .. table.concat(q, "&")) or ""))) or {}
+end
+
 function M.path(from, to)
     local q = string.format("path?from=%d,%d,%d&to=%d,%d,%d",
         from.x, from.y, from.z, to.x, to.y, to.z)

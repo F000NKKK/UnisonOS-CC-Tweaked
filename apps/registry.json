@@ -27,9 +27,9 @@
       "path": "packages/pilot"
     },
     "storage": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.1.0"],
-      "description": "Aggregate inventories on a wired-modem network as one storage pool",
+      "latest": "2.0.0",
+      "versions": ["1.0.0", "1.1.0", "2.0.0"],
+      "description": "Pool aggregator + Create-compatible; pushes snapshots to the server-side atlas",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/storage"

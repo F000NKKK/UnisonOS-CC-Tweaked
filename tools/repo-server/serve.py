@@ -498,6 +498,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     since = int(qs.get("since", ["0"])[0] or "0")
                     limit = int(qs.get("limit", ["500"])[0] or "500")
                     return self._send_json(200, {"events": self.atlas.recent_events(since, limit)}) or True
+                if method == "POST" and sub == "storage":
+                    body = self._read_body() or {}
+                    dev = str(body.get("by") or body.get("device") or "")
+                    if not dev:
+                        return self._send_json(400, {"error": "by required"}) or True
+                    n = self.atlas.replace_storage(dev, body.get("items") or [])
+                    return self._send_json(200, {"ok": True, "rows": n}) or True
+                if method == "GET" and sub == "storage":
+                    qs = parse_qs(url.query)
+                    name = qs.get("name", [None])[0]
+                    device = qs.get("device", [None])[0]
+                    pattern = qs.get("pattern", [None])[0]
+                    return self._send_json(200,
+                        self.atlas.storage_items(name=name, device=device,
+                                                 pattern=pattern)) or True
                 if method == "GET" and sub == "path":
                     qs = parse_qs(url.query)
                     try:

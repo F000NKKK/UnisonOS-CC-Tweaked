@@ -15,7 +15,7 @@
     "unison/kernel/scheduler.lua": "a33301dfc14dd2d39a7fea17d463bed1e75b2d5ccca0f7e6318771a87faf680e",
     "unison/kernel/services.lua": "dddb6fdba4d13b54af1f8d8167846b30492085e1287c8e57096754702ce9a4f9",
     "unison/lib/app.lua": "4a875a5fc17128e9b9e5f85fbc1112043a64312f9a559c509456c0adcb2ca429",
-    "unison/lib/atlas.lua": "9aba7ce17f48850f2833c278beea44ec069d95c8b788f30dbf9b207de188caa3",
+    "unison/lib/atlas.lua": "c2f39bf3af4d4677ee2b0e99156bb783a52c28357671fbb58dca6493ece6362f",
     "unison/lib/canvas.lua": "74c84e04842a7f1697eb00152e54391cd73af81b5c9ecf3ca909a5b4d3cf40ac",
     "unison/lib/cli.lua": "ca8dbf0432bab6135f4a83459faaf845e5938d843a1c0e5c5203e555e4b17f1b",
     "unison/lib/fmt.lua": "78feb6195557265d5b38a83c82a5b0398721621807922bd602eabb15f0bc7217",
@@ -218,5 +218,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.17.3"
+  "version": "0.18.0"
 }
