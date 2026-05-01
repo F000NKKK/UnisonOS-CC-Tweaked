@@ -129,8 +129,6 @@ function M.run()
     while true do
         local coords = readSaved()
         if coords then
-            -- Make sure gpsnet state matches even on legacy installs that
-            -- set gps-host.json before we started syncing.
             syncToGpsnet(coords)
         else
             coords = discoverLoop()
@@ -138,9 +136,52 @@ function M.run()
 
         log.info("gps-host", string.format("hosting at %d,%d,%d (%s)",
             coords.x, coords.y, coords.z, coords.source or "manual"))
-        local ok, err = pcall(gps.host, coords.x, coords.y, coords.z)
-        if not ok then log.warn("gps-host", "stopped: " .. tostring(err)) end
-        sleep(15)
+
+        -- gps.host blocks forever on os.pullEvent. Run our own copy of
+        -- the protocol so we can also count requests served — gives a
+        -- live heartbeat in logs and a way to detect "service alive
+        -- but never sees PINGs" from "service died". Identical wire
+        -- protocol to vanilla gps.host (channel 65534, "PING" string,
+        -- {x,y,z} reply on replyChannel).
+        local CH = 65534
+        local modems = {}
+        for _, n in ipairs(peripheral.getNames()) do
+            if peripheral.getType(n) == "modem" then
+                local okw, w = pcall(peripheral.call, n, "isWireless")
+                if okw and w then
+                    pcall(peripheral.call, n, "open", CH)
+                    modems[#modems + 1] = n
+                end
+            end
+        end
+        if #modems == 0 then
+            log.warn("gps-host", "no wireless modem; idling 30s")
+            sleep(30)
+        else
+            log.info("gps-host", "broadcasting on " .. #modems .. " modem(s): "
+                .. table.concat(modems, ","))
+            local served = 0
+            local lastReport = os.epoch("utc")
+            local function reply(replyCh)
+                for _, n in ipairs(modems) do
+                    pcall(peripheral.call, n, "transmit",
+                        replyCh, CH, { coords.x, coords.y, coords.z })
+                end
+            end
+            while true do
+                local ev, _, channel, replyChannel, message =
+                    os.pullEvent("modem_message")
+                if channel == CH and message == "PING" then
+                    reply(replyChannel)
+                    served = served + 1
+                    local now = os.epoch("utc")
+                    if now - lastReport > 60000 then
+                        log.info("gps-host", "served " .. served .. " ping(s) in last minute")
+                        served = 0; lastReport = now
+                    end
+                end
+            end
+        end
     end
 end
 
