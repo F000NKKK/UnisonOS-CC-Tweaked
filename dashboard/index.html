@@ -205,6 +205,7 @@
   <a data-tab="mine">Mine <span class="badge" id="badge-mine">0</span></a>
   <a data-tab="atlas">Atlas</a>
   <a data-tab="storage">Storage <span class="badge" id="badge-storage">0</span></a>
+  <a data-tab="redstone">Redstone <span class="badge" id="badge-redstone">0</span></a>
   <a data-tab="map">Map</a>
   <a data-tab="cron">Cron</a>
   <a data-tab="logs">Logs</a>
@@ -290,6 +291,15 @@
           <tbody id="storage-tbody"></tbody>
         </table>
       </div>
+    </section>
+  </div>
+
+  <!-- ==================== Redstone ==================== -->
+  <div class="page" id="page-redstone" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Redstone — per-device IO (Create stress / motor control)</span>
+        <span class="right small">refreshes every 2s from heartbeat</span></h2>
+      <div class="body" id="redstone-body" style="padding: 12px;"></div>
     </section>
   </div>
 
@@ -660,6 +670,7 @@
       if (activeTab === 'mine') renderMine();
       if (activeTab === 'map')  renderMap();
       if (activeTab === 'cron')  populateCronDevices();
+      if (activeTab === 'redstone') renderRedstone();
     } catch (e) {
       $('conn-status').textContent = 'offline (' + e.message + ')';
       $('conn-status').style.color = 'var(--err)';
@@ -870,6 +881,62 @@
     } catch (e) {
       logEvent('err', { who: 'atlas', body: 'add failed: ' + e.message });
     }
+  }
+
+  // ---- Redstone page ---------------------------------------------------
+
+  function renderRedstone() {
+    const live = liveDevices();
+    const rows = Object.entries(live)
+      .filter(([_, d]) => d.metrics && d.metrics.redstone)
+      .sort(([a], [b]) => a.localeCompare(b));
+    $('badge-redstone').textContent = rows.length;
+    const body = $('redstone-body');
+    if (rows.length === 0) {
+      body.innerHTML = '<span class="small">no devices reporting redstone yet</span>';
+      return;
+    }
+    body.innerHTML = '';
+    for (const [id, d] of rows) {
+      const rs = d.metrics.redstone;
+      const inputs = rs.inputs || {};
+      const outputs = rs.outputs || {};
+      const card = document.createElement('div');
+      card.className = 'miner-card';
+      const sides = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+      const inRow = sides.map(s => {
+        const v = inputs[s];
+        if (v == null) return '';
+        const cls = v > 0 ? 'mining' : '';
+        return `<span class="pill ${cls}">${s}: ${v}</span>`;
+      }).join('');
+      const outRow = sides.map(s => {
+        const v = outputs[s];
+        if (v == null) return '';
+        return `<span class="pill">${s}: ${v}</span>
+          <button data-rs-id="${escapeHtml(id)}" data-rs-side="${s}" data-rs-val="${v >= 15 ? 0 : 15}">
+            ${v >= 15 ? 'off' : 'on'}
+          </button>`;
+      }).join(' ');
+      card.innerHTML = `
+        <h3>${escapeHtml(id)} — ${escapeHtml(d.name || '-')}</h3>
+        <div class="small" style="color: var(--muted); margin-top: 4px;">inputs:</div>
+        <div>${inRow || '<span class="small">(none)</span>'}</div>
+        <div class="small" style="color: var(--muted); margin-top: 6px;">outputs:</div>
+        <div>${outRow || '<span class="small">(none)</span>'}</div>
+      `;
+      body.appendChild(card);
+    }
+    body.querySelectorAll('button[data-rs-id]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id   = b.dataset.rsId;
+        const side = b.dataset.rsSide;
+        const val  = parseInt(b.dataset.rsVal, 10);
+        await pushMessage(id, { type: 'redstone_set', side, value: val });
+        logEvent('out', { who: '→ ' + id, tag: 'redstone_set',
+          body: `${side} = ${val}` });
+      });
+    });
   }
 
   // ---- Storage page ----------------------------------------------------
@@ -1089,8 +1156,9 @@
       p.hidden = p.id !== ('page-' + name));
     if (name === 'mine') renderMine();
     if (name === 'map')  { renderMap(); attachMapHandlers(); }
-    if (name === 'atlas')   refreshAtlas();
-    if (name === 'storage') refreshStorage();
+    if (name === 'atlas')    refreshAtlas();
+    if (name === 'storage')  refreshStorage();
+    if (name === 'redstone') renderRedstone();
     if (name === 'cron')  { populateCronDevices(); refreshCron(); }
   }
 

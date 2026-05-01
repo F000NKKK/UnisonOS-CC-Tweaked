@@ -171,6 +171,19 @@ local function collectMetrics()
         for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
         metrics.inventory_used = used
     end
+    -- Redstone IO snapshot (analog 0..15 per side). Lets the dashboard
+    -- show Create stress gauges (Stress Gauge → comparator → side) and
+    -- offer remote redstone-output controls.
+    if redstone and redstone.getAnalogInput then
+        local rs = { inputs = {}, outputs = {} }
+        for _, side in ipairs({ "front", "back", "left", "right", "top", "bottom" }) do
+            local oki, vi = pcall(redstone.getAnalogInput, side)
+            if oki then rs.inputs[side] = vi end
+            local oko, vo = pcall(redstone.getAnalogOutput, side)
+            if oko then rs.outputs[side] = vo end
+        end
+        metrics.redstone = rs
+    end
     -- Surface mine app state if there's an active job, so the dashboard
     -- can render live progress without polling exec.
     if fs.exists("/unison/state/mine/job.json") then
@@ -343,6 +356,30 @@ function M.run()
             in_reply_to = env.id,
             client_ts = msg.ts,            -- echo so caller can compute RTT
             ts = os.epoch("utc"),
+        })
+    end)
+
+    -- Remote redstone control. msg = { side = "back", value = 0..15 }.
+    -- Useful for Create train stations / motors / item drains driven by
+    -- a redstone signal from this computer.
+    M.on("redstone_set", function(msg, env)
+        if not (redstone and redstone.setAnalogOutput) then
+            client.reply(env, { type = "redstone_reply", ok = false, err = "no redstone" })
+            return
+        end
+        local side = msg.side
+        local val = tonumber(msg.value)
+        if not (side and val) then
+            client.reply(env, { type = "redstone_reply", ok = false, err = "side+value required" })
+            return
+        end
+        val = math.max(0, math.min(15, math.floor(val)))
+        local ok, err = pcall(redstone.setAnalogOutput, side, val)
+        client.reply(env, {
+            type = "redstone_reply",
+            ok = ok and true or false,
+            err = (not ok) and tostring(err) or nil,
+            side = side, value = val,
         })
     end)
 

@@ -52,7 +52,7 @@
     "unison/services/display.lua": "881fa8fbc30099ce637d710446dea9f8692ab366cff37f268cbbf364a9d2ba72",
     "unison/services/gps_host.lua": "91e8db7e9b09603750258443fef6873a1e39f509b7add867c58c161fbd3c2789",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
-    "unison/services/rpcd.lua": "e35e1b7042322106458d157e85e5b0b5921335d6e9cae309ae1220458ac3ef92",
+    "unison/services/rpcd.lua": "ede97fb3101d934458ad9262ebcbff94fc2c0fce83f4c6e17c301484104ed659",
     "unison/shell/commands/acl.lua": "ee35ff4c946354e6dec822e096ddf8bba5a61ede14a9ec2e93187c8a2ce498f5",
     "unison/shell/commands/apitoken.lua": "8a5a8f7eea699f27eb6bee6aa1e19268bab3c0e0156292f42c85b4c79e1459b6",
     "unison/shell/commands/cat.lua": "8070d28baaa7188af9401e78b91c7c63458b4ee130b6927081d582428349e926",
@@ -79,6 +79,7 @@
     "unison/shell/commands/ps.lua": "41883e7272e58c1868abddcb089920695b29cbea6ebdb1db85ebacd14b104086",
     "unison/shell/commands/pwd.lua": "270ce06e52f04f200439fae7de562cde492edd5cb19d71ac4133ad088b30bfa8",
     "unison/shell/commands/reboot.lua": "0ac6742fcc11efeba2551d8b21c00614c777bde6b26929403ab06025e6a18d42",
+    "unison/shell/commands/redstone.lua": "663ca8d79ea9feb0296276885635b35c39c433a87d623ec6b595f1315e5568b6",
     "unison/shell/commands/rexec.lua": "630c15c17ebc0a1bc616c818e1d56a38401097788aa0c4585eaee3348f815fc1",
     "unison/shell/commands/rm.lua": "8e28883fc4772bfb7e5d8b00266a500d30d240e28e59ba63fed9009e93a9670c",
     "unison/shell/commands/rsend.lua": "b0a949377ada8a0f06777251c98d17480546b298d9a67713b2dea5e372403682",
@@ -212,7 +213,8 @@
       "unison/shell/commands/tail.lua",
       "unison/shell/commands/nano.lua",
       "unison/shell/commands/desktop.lua",
-      "unison/shell/commands/acl.lua"
+      "unison/shell/commands/acl.lua",
+      "unison/shell/commands/redstone.lua"
     ],
     "computer": [],
     "master": [],
@@ -220,5 +222,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.19.0"
+  "version": "0.20.0"
 }

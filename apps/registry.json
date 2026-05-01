@@ -43,9 +43,9 @@
       "path": "packages/atlas"
     },
     "farm": {
-      "latest": "1.2.0",
-      "versions": ["1.0.0", "1.1.0", "1.2.0"],
-      "description": "Auto-harvester turtle (pcall busy guard, RPC markBusy)",
+      "latest": "1.3.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+      "description": "Auto-harvester turtle, lib.turtle-based movement",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/farm"
@@ -59,9 +59,9 @@
       "path": "packages/autocraft"
     },
     "patrol": {
-      "latest": "1.2.0",
-      "versions": ["1.0.0", "1.1.0", "1.2.0"],
-      "description": "Turtle route runner with pcall busy guard + RPC markBusy",
+      "latest": "1.3.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+      "description": "Turtle route runner, lib.turtle-based movement",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/patrol"
