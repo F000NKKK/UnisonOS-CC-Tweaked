@@ -1,6 +1,6 @@
 return {
     name = "mine",
-    version = "2.1.0",
+    version = "2.1.1",
     description = "Sector miner with fuel-home guard, chest auto-refuel, shorthand syntax",
     author = "F000NKKK",
     roles = { "turtle" },
