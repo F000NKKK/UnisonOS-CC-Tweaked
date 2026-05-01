@@ -206,6 +206,7 @@
   <a data-tab="atlas">Atlas</a>
   <a data-tab="storage">Storage <span class="badge" id="badge-storage">0</span></a>
   <a data-tab="redstone">Redstone <span class="badge" id="badge-redstone">0</span></a>
+  <a data-tab="pilot">Pilot</a>
   <a data-tab="map">Map</a>
   <a data-tab="events">Events</a>
   <a data-tab="cron">Cron</a>
@@ -324,6 +325,51 @@
         <span class="item"><span class="swatch" style="background:#e57f4c;"></span>copper</span>
         <span class="item"><span class="swatch" style="background:#888888;"></span>coal</span>
         <span class="item"><span class="swatch" style="background:#e57fd8;"></span>chest</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== Pilot ==================== -->
+  <div class="page" id="page-pilot" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Pilot — drive a turtle remotely</span>
+        <span class="right">
+          <select id="pilot-target"></select>
+          <button id="pilot-info">refresh info</button>
+        </span></h2>
+      <div class="body" style="padding: 16px;">
+        <div id="pilot-info-row" style="margin-bottom: 12px; font-size: 12px; color: var(--muted);">
+          select a turtle, then use the controls below
+        </div>
+        <div style="display: grid; grid-template-columns: auto auto auto; gap: 8px; max-width: 360px; margin-bottom: 16px;">
+          <div></div>
+          <button data-pilot="up"      style="padding: 12px;">▲ up</button>
+          <div></div>
+
+          <button data-pilot="left"    style="padding: 12px;">◀ turn L</button>
+          <button data-pilot="forward" style="padding: 12px;">▶ forward</button>
+          <button data-pilot="right"   style="padding: 12px;">turn R ▶</button>
+
+          <button data-pilot="around"  style="padding: 12px;">↻ 180°</button>
+          <button data-pilot="back"    style="padding: 12px;">▼ back</button>
+          <button data-pilot="down"    style="padding: 12px;">▼ down</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 360px; margin-bottom: 16px;">
+          <button data-pilot="dig">dig</button>
+          <button data-pilot="digup">dig up</button>
+          <button data-pilot="digdown">dig down</button>
+          <button data-pilot="place">place</button>
+          <button data-pilot="placeup">place up</button>
+          <button data-pilot="placedown">place down</button>
+          <button data-pilot="suck">suck</button>
+          <button data-pilot="drop">drop</button>
+          <button data-pilot="refuel">refuel</button>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <span class="small">select slot:</span>
+          <input id="pilot-slot" type="number" min="1" max="16" value="1" style="width: 60px;" />
+          <button id="pilot-sel">select</button>
+        </div>
       </div>
     </section>
   </div>
@@ -705,6 +751,7 @@
       if (activeTab === 'cron')  populateCronDevices();
       if (activeTab === 'redstone') renderRedstone();
       if (activeTab === 'events') refreshEvents();
+      if (activeTab === 'pilot')  populatePilotTargets();
       // Diff-based toast notifications.
       try { notifyChanges(devices); } catch (_) {}
     } catch (e) {
@@ -1046,6 +1093,53 @@
           body: `${side} = ${val}` });
       });
     });
+  }
+
+  // ---- Pilot page ------------------------------------------------------
+  // Sends `pilot` RPC to the selected turtle for each button. Reply
+  // (`pilot_reply`) carries fuel + inventory; we surface it in the info row.
+
+  function populatePilotTargets() {
+    const live = liveDevices();
+    const sel = $('pilot-target');
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const turtles = Object.entries(live)
+      .filter(([_, d]) => d.role === 'turtle')
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (turtles.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '(no turtles online)';
+      sel.appendChild(opt);
+      return;
+    }
+    for (const [id, d] of turtles) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = `${id} — ${d.name || '?'}`;
+      sel.appendChild(opt);
+    }
+    if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+  }
+
+  async function pilotAction(action, extra) {
+    const target = $('pilot-target').value;
+    if (!target) return;
+    const payload = Object.assign({ type: 'pilot', action }, extra || {});
+    try {
+      const reply = await rpc(target, payload, 4000);
+      const parts = ['pilot ' + action, reply.ok ? 'ok' : 'fail'];
+      if (reply.fuel != null) parts.push('fuel=' + reply.fuel);
+      if (reply.inventory) parts.push('inv=' + reply.inventory);
+      if (reply.err) parts.push('err: ' + reply.err);
+      $('pilot-info-row').textContent = parts.join('  |  ');
+    } catch (e) {
+      $('pilot-info-row').textContent = 'pilot ' + action + ' failed: ' + e.message;
+    }
+  }
+
+  async function pilotInfo() {
+    return pilotAction('info');
   }
 
   // ---- Toast notifications --------------------------------------------
@@ -1465,6 +1559,7 @@
     if (name === 'storage')  refreshStorage();
     if (name === 'redstone') renderRedstone();
     if (name === 'events')   refreshEvents();
+    if (name === 'pilot')    populatePilotTargets();
     // Persist active tab so refresh doesn't kick you back to Devices.
     try { localStorage.setItem('unison-tab', name); } catch (_) {}
     if (name === 'cron')  { populateCronDevices(); refreshCron(); }
@@ -1565,6 +1660,16 @@
     $('logmodal').hidden = true; _logModalDeviceId = null;
   });
   $('logmodal-refresh').addEventListener('click', refreshDeviceLog);
+  // Pilot wiring.
+  document.querySelectorAll('button[data-pilot]').forEach(b => {
+    b.addEventListener('click', () => pilotAction(b.dataset.pilot));
+  });
+  $('pilot-info').addEventListener('click', pilotInfo);
+  $('pilot-target').addEventListener('change', pilotInfo);
+  $('pilot-sel').addEventListener('click', () => {
+    const slot = parseInt($('pilot-slot').value, 10);
+    if (slot >= 1 && slot <= 16) pilotAction('sel', { slot });
+  });
   $('storage-refresh').addEventListener('click', refreshStorage);
   $('storage-filter').addEventListener('input', () => {
     if (window._storFilter) clearTimeout(window._storFilter);

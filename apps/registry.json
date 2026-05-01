@@ -19,9 +19,9 @@
       "path": "packages/sysmon"
     },
     "pilot": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.1.0"],
-      "description": "Remote-control a turtle via the message bus",
+      "latest": "1.2.1",
+      "versions": ["1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.1.0", "1.2.0", "1.2.1"],
+      "description": "Remote turtle control: CLI + dashboard D-pad. busy_on_handler defers OS upgrades while flying.",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/pilot"
@@ -51,9 +51,9 @@
       "path": "packages/farm"
     },
     "autocraft": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.1.0"],
-      "description": "Recipe orchestrator on a crafty turtle",
+      "latest": "1.2.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0"],
+      "description": "Recipe orchestrator on a crafty turtle; markBusy on craft_order so OS upgrades defer",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/autocraft"
