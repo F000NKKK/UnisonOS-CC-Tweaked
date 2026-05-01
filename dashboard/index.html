@@ -436,6 +436,7 @@
   function hideAuth() { $('auth-overlay').hidden = true; }
 
   async function api(path, opts) {
+    if (!cfg || !cfg.base) throw new Error('not connected');
     opts = opts || {};
     const headers = opts.headers || {};
     if (cfg && cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
@@ -1196,9 +1197,9 @@
 
   window.addEventListener('resize', () => { if (activeTab === 'map') renderMap(); });
 
-  // Boot
-  showTab((location.hash || '#devices').slice(1));
+  // Boot — start() first so cfg is loaded before any tab tries to fetch.
   start();
+  showTab((location.hash || '#devices').slice(1));
 })();
 </script>
 </body>
