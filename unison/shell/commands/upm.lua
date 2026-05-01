@@ -21,16 +21,17 @@ local function help()
     print("  list                  list installed packages")
     print("  remove <name> [-f]    uninstall (refuses if dependants exist)")
     print("  update [<name>]       update an app package (one or all)")
-    print("  upgrade [-y]          check for and apply an OS upgrade")
+    print("  upgrade [-y] [-f]     check for and apply an OS upgrade (-f overrides busy guard)")
     print("  upgrade -d [-y]       refresh the attached installer disk")
     print("  sources               show configured sources")
 end
 
 local function cmdUpgrade(args)
-    local yes, diskMode = false, false
+    local yes, diskMode, force = false, false, false
     for _, a in ipairs(args) do
         if a == "-y" or a == "--yes" then yes = true
-        elseif a == "-d" or a == "--disk" then diskMode = true end
+        elseif a == "-d" or a == "--disk" then diskMode = true
+        elseif a == "-f" or a == "--force" then force = true end
     end
 
     if diskMode then
@@ -73,7 +74,11 @@ local function cmdUpgrade(args)
             print("aborted."); return
         end
     end
-    osu.applyManifest(manifest)
+    local ok, err = osu.applyManifest(manifest, { force = force })
+    if not ok and err and err:sub(1, 5) == "busy:" then
+        printError("upgrade deferred: " .. err
+            .. "  (re-run with -f to override, or wait for the job to finish)")
+    end
 end
 
 local function cmdSearch(args)

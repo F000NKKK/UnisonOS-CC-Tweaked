@@ -12,9 +12,29 @@ local sources_mod = dofile("/unison/pm/sources.lua")
 local M = {}
 
 local CHECK_INTERVAL = 120
+local BUSY_RECHECK   = 30           -- seconds to wait while a user app is running
 local VERSION_FILE = "/unison/.version"
 local STAGING_DIR  = "/unison.staging"
 local PENDING_MARKER = "/unison/.pending-commit"
+
+-- Returns a short label of what's keeping the device busy, or nil if idle.
+-- Reboots & file replacement during long jobs (mining, farming, scanning) are
+-- disruptive — we postpone updates until every user job releases its busy
+-- token (markBusy/clearBusy in unison.process) or its scheduler proc exits.
+local function busyReason()
+    local proc = unison and unison.process
+    if proc and proc.busyJobs then
+        local jobs = proc.busyJobs()
+        if jobs[1] then return jobs[1].name end
+    end
+    local sched = unison and unison.kernel and unison.kernel.scheduler
+    if sched and sched.list then
+        for _, p in ipairs(sched.list()) do
+            if p.group == "user" then return p.name end
+        end
+    end
+    return nil
+end
 
 local function fetchRel(rel)
     return httpLib.getFromSources(sources_mod.list(), rel)
@@ -59,9 +79,17 @@ end
 M.peekManifest = fetchManifest
 M.currentVersion = function() return fsLib.read(VERSION_FILE) end
 
-function M.applyManifest(manifest)
+function M.applyManifest(manifest, opts)
+    opts = opts or {}
     if type(manifest) ~= "table" or not manifest.version then
         return false, "invalid manifest"
+    end
+    if not opts.force then
+        local why = busyReason()
+        if why then
+            log.info("os-updater", "deferred — busy: " .. tostring(why))
+            return false, "busy: " .. tostring(why)
+        end
     end
     log.info("os-updater", "staging " .. tostring(manifest.version))
     print("")
@@ -112,9 +140,18 @@ function M.loop()
     end
     log.info("os-updater", "started, interval=" .. CHECK_INTERVAL .. "s")
     while true do
-        local ok, err = pcall(M.checkOnce)
-        if not ok then log.warn("os-updater", "tick error: " .. tostring(err)) end
-        sleep(CHECK_INTERVAL)
+        -- Skip the network check entirely if the device is mid-job; the
+        -- short BUSY_RECHECK cadence picks the update back up the moment
+        -- the user process exits.
+        local why = busyReason()
+        if why then
+            log.debug("os-updater", "idle — busy: " .. tostring(why))
+            sleep(BUSY_RECHECK)
+        else
+            local ok, err = pcall(M.checkOnce)
+            if not ok then log.warn("os-updater", "tick error: " .. tostring(err)) end
+            sleep(CHECK_INTERVAL)
+        end
     end
 end
 

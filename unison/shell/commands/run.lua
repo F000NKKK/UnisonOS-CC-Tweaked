@@ -58,7 +58,18 @@ function M.run(ctx, args)
     -- pullEvent calls are the only ones receiving input while it's active.
     -- This avoids the "shell and app both consume keys" duplication that
     -- happens with sched.spawn. The shell prompt resumes when the app exits.
+    --
+    -- Mark the device as busy so system services (os-updater) defer
+    -- reboots until the program ends. Cleared even if the app errors.
+    local proc = unison and unison.process
+    local busyToken = proc and proc.markBusy
+        and proc.markBusy(res.name or res.path, { source = "shell.run" })
+        or nil
+
     local ok, err = sandbox.execFile(res.path, permissions, table.unpack(rest))
+
+    if proc and proc.clearBusy then proc.clearBusy(busyToken) end
+
     if not ok then printError("runtime error: " .. tostring(err)) end
 end
 

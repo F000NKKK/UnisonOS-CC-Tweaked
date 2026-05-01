@@ -158,6 +158,41 @@ function M.list()
     return scheduler.list()
 end
 
+-- Cooperative "busy" registry. Long-running user jobs (mining, farming,
+-- patrols, scans) call markBusy(name) on entry and clearBusy(token) on exit
+-- so system services (os-updater, disk-updater) can postpone disruptive
+-- actions like reboots. Multiple concurrent jobs stack; the device is busy
+-- as long as at least one token is outstanding.
+local _busyJobs = {}
+local _busySeq  = 0
+
+function M.markBusy(name, meta)
+    _busySeq = _busySeq + 1
+    local token = _busySeq
+    _busyJobs[token] = {
+        token = token,
+        name  = tostring(name or "job"),
+        since = os.epoch("utc"),
+        meta  = meta,
+    }
+    return token
+end
+
+function M.clearBusy(token)
+    if token == nil then return end
+    _busyJobs[token] = nil
+end
+
+function M.busyJobs()
+    local out = {}
+    for _, j in pairs(_busyJobs) do out[#out + 1] = j end
+    return out
+end
+
+function M.isBusy()
+    return next(_busyJobs) ~= nil
+end
+
 function M.byPid(pid)
     deps()
     if not scheduler.exists(pid) then return nil end
