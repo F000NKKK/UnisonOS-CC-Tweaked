@@ -71,9 +71,39 @@ class Store:
             json.dump(data, f, indent=2, sort_keys=True)
         os.replace(tmp, path)
 
+    # Stale-device pruning policy. Console sessions (web dashboards) get
+    # evicted aggressively because every browser tab spawns a fresh
+    # console-XXXX entry; without TTL they pile up forever. Real devices
+    # (turtles, computers) get a longer TTL to survive transient outages.
+    CONSOLE_TTL_MS = 5 * 60 * 1000        # 5 minutes
+    DEVICE_TTL_MS  = 7 * 24 * 60 * 60 * 1000  # 7 days
+
+    def _is_console(self, dev_id: str, info: dict) -> bool:
+        if dev_id.startswith("console-"):
+            return True
+        if (info or {}).get("role") == "console":
+            return True
+        return False
+
+    def _prune_stale(self, db: dict) -> bool:
+        """Drop expired entries in-place. Returns True if anything was pruned."""
+        now = _now_ms()
+        changed = False
+        for dev_id in list(db.keys()):
+            info = db[dev_id] or {}
+            seen = info.get("last_seen") or 0
+            ttl = self.CONSOLE_TTL_MS if self._is_console(dev_id, info) else self.DEVICE_TTL_MS
+            if now - seen > ttl:
+                del db[dev_id]
+                changed = True
+        return changed
+
     def devices(self) -> dict:
         with self.lock:
-            return self._read(self.devices_path) or {}
+            db = self._read(self.devices_path) or {}
+            if self._prune_stale(db):
+                self._write(self.devices_path, db)
+            return db
 
     def upsert_device(self, device_id: str, info: dict) -> dict:
         with self.lock:

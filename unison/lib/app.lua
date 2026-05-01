@@ -36,9 +36,26 @@ function M.subscribeAll(handlers)
 end
 
 -- run a listen-mode app: subscribe handlers, wait for Q, unsubscribe.
+-- opts.busy_on_handler = true wraps each handler call in
+-- unison.process.markBusy/clearBusy, so OS updates defer while the
+-- service is actively processing an RPC.
 function M.runService(opts)
     opts = opts or {}
-    local unsubscribe = M.subscribeAll(opts.handlers or {})
+    local handlers = opts.handlers or {}
+    if opts.busy_on_handler then
+        local proc = unison and unison.process
+        local wrapped = {}
+        for typ, fn in pairs(handlers) do
+            wrapped[typ] = function(msg, env)
+                local tok = proc and proc.markBusy and proc.markBusy(typ) or nil
+                local ok, err = pcall(fn, msg, env)
+                if proc and proc.clearBusy then proc.clearBusy(tok) end
+                if not ok then error(err, 0) end
+            end
+        end
+        handlers = wrapped
+    end
+    local unsubscribe = M.subscribeAll(handlers)
     M.listenLoop({
         intro = opts.intro,
         outro = opts.outro,

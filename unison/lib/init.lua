@@ -13,4 +13,5 @@ return {
     fmt         = dofile("/unison/lib/fmt.lua"),
     gps         = dofile("/unison/lib/gps.lua"),
     scrollback  = dofile("/unison/lib/scrollback.lua"),
+    turtle      = dofile("/unison/lib/turtle.lua"),
 }

@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.12.4",
+  "version": "0.13.0",
   "phase": 10,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -30,6 +30,7 @@
       "unison/lib/fmt.lua",
       "unison/lib/gps.lua",
       "unison/lib/scrollback.lua",
+      "unison/lib/turtle.lua",
       "unison/lib/init.lua",
       "unison/crypto/sha256.lua",
       "unison/crypto/hmac.lua",
