@@ -287,7 +287,7 @@
       <div class="body">
         <table>
           <thead><tr>
-            <th>Item</th><th>Total</th><th>By device</th>
+            <th>Item</th><th>Total</th><th>By device</th><th></th>
           </tr></thead>
           <tbody id="storage-tbody"></tbody>
         </table>
@@ -314,10 +314,16 @@
       </div>
       <div class="legend">
         <span class="item"><span class="swatch" style="background:#58a6ff;"></span>turtle</span>
-        <span class="item"><span class="swatch" style="background:#3fb950;"></span>tower</span>
+        <span class="item"><span class="swatch" style="background:#3fb950;"></span>tower / emerald</span>
         <span class="item"><span class="swatch" style="background:#d29922;"></span>computer</span>
-        <span class="item"><span class="swatch" style="background:#f85149;"></span>pocket</span>
-        <span class="item"><span class="swatch" style="background:#e57fd8;"></span>landmark</span>
+        <span class="item"><span class="swatch" style="background:#f85149;"></span>pocket / redstone</span>
+        <span class="item"><span class="swatch" style="background:#3df0d4;"></span>diamond</span>
+        <span class="item"><span class="swatch" style="background:#c9a07f;"></span>iron</span>
+        <span class="item"><span class="swatch" style="background:#f2d340;"></span>gold</span>
+        <span class="item"><span class="swatch" style="background:#3366cc;"></span>lapis</span>
+        <span class="item"><span class="swatch" style="background:#e57f4c;"></span>copper</span>
+        <span class="item"><span class="swatch" style="background:#888888;"></span>coal</span>
+        <span class="item"><span class="swatch" style="background:#e57fd8;"></span>chest</span>
       </div>
     </section>
   </div>
@@ -749,14 +755,82 @@
     if (lg) lg.addEventListener('click', () => openDeviceLog(selectedId));
   }
 
+  // Per-package action presets — quick forms for mine/farm/scanner with
+  // input fields. The user picks a preset + fills numbers, we generate
+  // the right shell command. Saves typing for common cases.
+  function actionPresets(d) {
+    const presets = [];
+    if (d.role === 'turtle') {
+      presets.push({
+        title: 'mine sector',
+        fields: [
+          { name: 'x', placeholder: 'xEnd (e.g. 16)' },
+          { name: 'y', placeholder: 'yEnd' },
+          { name: 'z', placeholder: 'zEnd' },
+        ],
+        build: f => `mine ${f.x} ${f.y} ${f.z}`,
+      });
+      presets.push({
+        title: 'farm row',
+        fields: [{ name: 'len', placeholder: 'length (e.g. 8)' }],
+        build: f => `farm ${f.len}`,
+      });
+      presets.push({
+        title: 'scanner sphere',
+        fields: [
+          { name: 'r', placeholder: 'radius (e.g. 16)' },
+          { name: 'mode', placeholder: 'ores  (or blank for all)' },
+        ],
+        build: f => `scanner sphere ${f.r}${f.mode ? ' ' + f.mode : ''}`,
+      });
+    }
+    return presets;
+  }
+
   function openDeviceDetail(id) {
     const d = devices[id]; if (!d) return;
     selectedId = id; $('target-name').textContent = id;
     $('dm-title').textContent = `${id} — ${d.role || '?'} v${d.version || '?'}`;
-    $('dm-body').innerHTML = `<pre class="json">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+    // Header with package quick-action presets, then raw JSON.
+    let presetsHtml = '';
+    const presets = actionPresets(d);
+    if (presets.length > 0) {
+      presetsHtml = '<div style="margin-bottom: 10px;">';
+      for (const p of presets) {
+        const inputs = p.fields.map(f =>
+          `<input type="text" data-pf="${escapeHtml(f.name)}" placeholder="${escapeHtml(f.placeholder)}" style="width: 110px; margin-right: 4px;" />`
+        ).join('');
+        presetsHtml += `
+          <div style="margin: 4px 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <span style="min-width: 100px; font-size: 11px; color: var(--muted);">${escapeHtml(p.title)}</span>
+            ${inputs}
+            <button class="primary" data-preset="${escapeHtml(p.title)}">run</button>
+          </div>`;
+      }
+      presetsHtml += '</div>';
+    }
+    $('dm-body').innerHTML = presetsHtml +
+      `<pre class="json">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+
+    // Wire the preset run buttons.
+    $('dm-body').querySelectorAll('button[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = presets.find(p => p.title === btn.dataset.preset);
+        if (!preset) return;
+        const f = {};
+        for (const fi of preset.fields) {
+          const inp = btn.parentElement.querySelector(`input[data-pf="${fi.name}"]`);
+          f[fi.name] = (inp && inp.value.trim()) || '';
+        }
+        execOn(id, preset.build(f));
+        $('device-modal').hidden = true;
+      });
+    });
+
     const actions = $('dm-actions'); actions.innerHTML = '';
     const buttons = [
       { label: 'ping', fn: () => { pushMessage(id, { type: 'ping', ts: Date.now() }); logEvent('out', { who: '→ ' + id, tag: 'ping' }); } },
+      { label: 'logs', fn: () => { $('device-modal').hidden = true; openDeviceLog(id); } },
       { label: 'version', cmd: 'version' },
       { label: 'service list', cmd: 'service list' },
       { label: 'upm list', cmd: 'upm list' },
@@ -766,8 +840,7 @@
     if (d.role === 'turtle') {
       buttons.splice(2, 0,
         { label: 'mine status', cmd: 'mine status' },
-        { label: 'mine 16 3 16', cmd: 'mine 16 3 16' },
-        { label: 'mine -X', cmd: 'mine -X', danger: true });
+        { label: 'mine -A', cmd: 'mine -A', danger: true });
     }
     for (const b of buttons) {
       const el = document.createElement('button');
@@ -1109,9 +1182,25 @@
           <td>${escapeHtml(t.name)}</td>
           <td>${t.count}</td>
           <td class="small">${breakdown}</td>
+          <td><button data-pull="${escapeHtml(t.name)}">pull 64</button></td>
         `;
         tbody.appendChild(tr);
       }
+      tbody.querySelectorAll('button[data-pull]').forEach(b => {
+        b.addEventListener('click', async () => {
+          const item = b.dataset.pull;
+          // Find the storage device with the highest count of this item
+          // and tell it to pull into its buffer.
+          const t = totals.find(x => x.name === item);
+          if (!t) return;
+          const top = (t.devices || []).slice().sort((a, b) => b.count - a.count)[0];
+          if (!top) return;
+          await pushMessage(top.device, {
+            type: 'storage_pull', pattern: item, count: 64,
+          });
+          toast(`pull 64 ${item.replace('minecraft:','')} requested from ${top.device}`, 'ok');
+        });
+      });
     } catch (e) {
       tbody.innerHTML =
         `<tr><td colspan="3" class="small" style="color:var(--err);">storage fetch failed: ${escapeHtml(e.message)}</td></tr>`;
@@ -1129,6 +1218,60 @@
          : role === 'pocket' ? '#f85149'
          : role === 'monitor-host' ? '#e57fd8'
          : '#d29922';
+  }
+
+  // Atlas blocks cache for the map overlay. Refreshed every 10 seconds
+  // when the Map tab is visible.
+  let _atlasBlocks = [];
+  let _atlasFetchedAt = 0;
+  const ORE_COLORS = {
+    diamond:        '#3df0d4',
+    'deepslate_diamond_ore': '#3df0d4',
+    'diamond_ore':  '#3df0d4',
+    iron:           '#c9a07f',
+    'iron_ore':     '#c9a07f',
+    'deepslate_iron_ore': '#c9a07f',
+    gold:           '#f2d340',
+    'gold_ore':     '#f2d340',
+    'deepslate_gold_ore': '#f2d340',
+    redstone:       '#f85149',
+    'redstone_ore': '#f85149',
+    'deepslate_redstone_ore': '#f85149',
+    lapis:          '#3366cc',
+    'lapis_ore':    '#3366cc',
+    'deepslate_lapis_ore':   '#3366cc',
+    emerald:        '#3fb950',
+    'emerald_ore':  '#3fb950',
+    'deepslate_emerald_ore': '#3fb950',
+    copper:         '#e57f4c',
+    'copper_ore':   '#e57f4c',
+    'deepslate_copper_ore':  '#e57f4c',
+    coal:           '#888888',
+    'coal_ore':     '#888888',
+    'deepslate_coal_ore':    '#888888',
+    'ancient_debris': '#8a3a1a',
+    chest:          '#e57fd8',
+    'trapped_chest':'#e57fd8',
+    barrel:         '#e57fd8',
+  };
+  function blockColor(name) {
+    if (!name) return null;
+    const tail = name.replace(/^minecraft:/, '');
+    return ORE_COLORS[tail] || null;
+  }
+
+  async function refreshAtlasBlocks() {
+    if (!cfg) return;
+    const now = Date.now();
+    if (now - _atlasFetchedAt < 8000) return;
+    _atlasFetchedAt = now;
+    try {
+      // Fetch only ore-ish kinds; skip stone to keep payload small.
+      const kinds = ['diamond','iron','gold','redstone','lapis','emerald',
+                     'copper','coal','ancient_debris','chest','barrel'];
+      const data = await api('/api/atlas/blocks?limit=5000&kinds=' + kinds.join(','));
+      _atlasBlocks = (data && data.blocks) || [];
+    } catch (_) {}
   }
 
   function renderMap() {
@@ -1161,6 +1304,18 @@
     ctx.beginPath(); ctx.moveTo(ox0, 0); ctx.lineTo(ox0, h); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, oz0); ctx.lineTo(w, oz0); ctx.stroke();
 
+    // Atlas blocks (ores / chests). Drawn first so devices sit on top.
+    for (const b of _atlasBlocks) {
+      const col = blockColor(b.name);
+      if (!col) continue;
+      const sx = w / 2 + (b.x - mapView.cx) * mapView.scale;
+      const sz = h / 2 + (b.z - mapView.cz) * mapView.scale;
+      if (sx < -2 || sx > w + 2 || sz < -2 || sz > h + 2) continue;
+      const r = mapView.scale > 0.6 ? 2.5 : 1.5;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(sx, sz, r, 0, Math.PI * 2); ctx.fill();
+    }
+
     // Devices
     const live = liveDevices();
     for (const id of Object.keys(live)) {
@@ -1178,10 +1333,14 @@
       ctx.fillText(`${p.x},${p.y},${p.z}`, sx + 8, sz + 16);
     }
 
-    // Compass
+    // Compass + atlas count
     ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
     ctx.fillText('+x →', w - 50, h - 12);
     ctx.fillText('+z ↓', 8, 14);
+    ctx.fillText(_atlasBlocks.length + ' atlas blocks visible', 8, h - 8);
+
+    // Trigger an async refresh; redraws on next tick when data arrives.
+    refreshAtlasBlocks();
   }
 
   function attachMapHandlers() {
