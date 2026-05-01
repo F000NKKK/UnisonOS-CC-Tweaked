@@ -66,6 +66,12 @@ local function locateHere(timeout)
     end
     local x, y, z, srcOrErr = gpsLib.locate("self", { http_only = true })
     if x then return x, y, z, srcOrErr or "http" end
+    -- Tower fallback: this device might BE a tower (set up via gps-tower)
+    -- and so can't triangulate itself — read its own saved coords.
+    local saved = fsLib.readJson("/unison/state/gps-host.json")
+    if type(saved) == "table" and saved.x and saved.y and saved.z then
+        return iRound(saved.x), iRound(saved.y), iRound(saved.z), "tower"
+    end
     return nil, nil, nil, srcOrErr or "self locate failed"
 end
 

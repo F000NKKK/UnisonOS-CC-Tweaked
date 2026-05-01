@@ -168,11 +168,25 @@ local function collectMetrics()
         -- Use unison.lib.gps so we share its no-fix cache and don't block
         -- every heartbeat for a full GPS timeout when there are no towers.
         local lib = unison and unison.lib
+        local gotFix = false
         if lib and lib.gps then
             local x, y, z, src = lib.gps.locate("self", { timeout = 0.5 })
             if x and src == "gps" then
                 metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
                 metrics.position_source = "gps"
+                gotFix = true
+            end
+        end
+        -- Tower fallback: a host configured via gps-tower has its coords
+        -- saved locally even though it can't triangulate itself. Pick them
+        -- up so the dashboard sees towers without an explicit gpsnet host.
+        if not gotFix and lib and lib.fs and fs.exists("/unison/state/gps-host.json") then
+            local saved = lib.fs.readJson("/unison/state/gps-host.json")
+            if type(saved) == "table" and saved.x and saved.y and saved.z then
+                metrics.position = {
+                    x = iRound(saved.x), y = iRound(saved.y), z = iRound(saved.z),
+                }
+                metrics.position_source = "tower"
             end
         end
     end
