@@ -25,7 +25,7 @@ import threading
 import time
 import uuid
 from functools import partial
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 STATE_DIR_DEFAULT = "/srv/unison.state"
@@ -335,6 +335,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     server_version = "UnisonOS-Server/1.2"
     store: "Store | None" = None
     api_token: "str | None" = None
+    atlas = None    # AtlasStore, set by _make_handler
 
     def _send_json(self, status: int, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -383,7 +384,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return True
         store = self.store
 
-        parts = path.split("/")
+        url = urlparse(path)
+        parts = url.path.split("/")
         seg = parts[2] if len(parts) >= 3 else ""
 
         try:
@@ -444,6 +446,75 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     envs.append(store.push_message(dev_id, body))
                 return self._send_json(200, {"ok": True, "delivered": len(envs)}) or True
 
+            # ---- atlas: shared world map ------------------------------
+            if seg == "atlas" and self.atlas is not None:
+                sub = parts[3] if len(parts) >= 4 else ""
+                if method == "POST" and sub == "blocks":
+                    body = self._read_body() or {}
+                    if not isinstance(body, dict):
+                        return self._send_json(400, {"error": "json object required"}) or True
+                    n = self.atlas.upsert_blocks(body.get("blocks") or [], body.get("by"))
+                    return self._send_json(200, {"ok": True, "ingested": n}) or True
+                if method == "GET" and sub == "blocks":
+                    qs = parse_qs(url.query)
+                    bbox = None
+                    if "bbox" in qs:
+                        try:
+                            parts2 = [int(v) for v in qs["bbox"][0].split(",")]
+                            if len(parts2) == 6:
+                                bbox = tuple(parts2)
+                        except ValueError:
+                            pass
+                    kinds = qs.get("kinds", [None])[0]
+                    kinds_list = kinds.split(",") if kinds else None
+                    name = qs.get("name", [None])[0]
+                    limit = int(qs.get("limit", ["10000"])[0] or "10000")
+                    rows = self.atlas.query_blocks(
+                        bbox=bbox, kinds=kinds_list, name=name, limit=limit)
+                    return self._send_json(200, {"blocks": rows}) or True
+                if method == "GET" and sub == "stats":
+                    return self._send_json(200, self.atlas.stats()) or True
+                if method == "GET" and sub == "landmarks":
+                    return self._send_json(200, {"items": list(self.atlas.landmarks().values())}) or True
+                if method == "POST" and sub == "landmarks":
+                    body = self._read_body() or {}
+                    nm = body.get("name")
+                    if not nm:
+                        return self._send_json(400, {"error": "name required"}) or True
+                    rec = self.atlas.add_landmark(
+                        str(nm), int(body.get("x") or 0), int(body.get("y") or 0),
+                        int(body.get("z") or 0),
+                        tags=body.get("tags") or [], by=body.get("by"))
+                    return self._send_json(200, {"ok": True, "landmark": rec}) or True
+                if method == "DELETE" and sub == "landmarks" and len(parts) >= 5:
+                    ok = self.atlas.remove_landmark(parts[4])
+                    return self._send_json(200, {"ok": ok}) or True
+                if method == "POST" and sub == "events":
+                    body = self._read_body() or {}
+                    n = self.atlas.push_events(body.get("events") or [], body.get("by"))
+                    return self._send_json(200, {"ok": True, "ingested": n}) or True
+                if method == "GET" and sub == "events":
+                    qs = parse_qs(url.query)
+                    since = int(qs.get("since", ["0"])[0] or "0")
+                    limit = int(qs.get("limit", ["500"])[0] or "500")
+                    return self._send_json(200, {"events": self.atlas.recent_events(since, limit)}) or True
+                if method == "GET" and sub == "path":
+                    qs = parse_qs(url.query)
+                    try:
+                        fr = tuple(int(v) for v in qs.get("from", [""])[0].split(","))
+                        to = tuple(int(v) for v in qs.get("to", [""])[0].split(","))
+                    except ValueError:
+                        return self._send_json(400, {"error": "from/to required as x,y,z"}) or True
+                    if len(fr) != 3 or len(to) != 3:
+                        return self._send_json(400, {"error": "from/to need 3 ints"}) or True
+                    path = self.atlas.find_path(fr, to)
+                    if not path:
+                        return self._send_json(404, {"error": "no path"}) or True
+                    return self._send_json(200, {
+                        "path": [{"x": p[0], "y": p[1], "z": p[2]} for p in path],
+                        "length": len(path),
+                    }) or True
+
             self._send_json(404, {"error": "no such endpoint"})
             return True
         except Exception as exc:
@@ -470,26 +541,27 @@ class ThreadingHTTPServer(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def _make_handler(root: str, store: Store, token):
+def _make_handler(root: str, store: Store, token, atlas=None):
     Handler.store = store
     Handler.api_token = token
+    Handler.atlas = atlas
     return partial(Handler, directory=root)
 
 
-def _serve_plain(root, store, token, port):
-    srv = ThreadingHTTPServer(("0.0.0.0", port), _make_handler(root, store, token))
+def _serve_plain(root, store, token, port, atlas=None):
+    srv = ThreadingHTTPServer(("0.0.0.0", port), _make_handler(root, store, token, atlas))
     print(f"[unison] HTTP  :{port} -> {root}", flush=True)
     srv.serve_forever()
 
 
-def _serve_tls(root, store, token, port, cert, key):
+def _serve_tls(root, store, token, port, cert, key, atlas=None):
     try:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=cert, keyfile=key)
     except Exception as exc:
         print(f"[unison] HTTPS disabled: cert load failed ({exc})", flush=True)
         return
-    srv = ThreadingHTTPServer(("0.0.0.0", port), _make_handler(root, store, token))
+    srv = ThreadingHTTPServer(("0.0.0.0", port), _make_handler(root, store, token, atlas))
     srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     print(f"[unison] HTTPS :{port} -> {root}", flush=True)
     srv.serve_forever()
@@ -515,6 +587,16 @@ def main():
 
     store = Store(args.state)
 
+    # Atlas: shared world map. Sits next to /api/messages on the same
+    # ports. Loads lazily so the server still runs if atlas_store fails.
+    atlas = None
+    try:
+        from atlas_store import AtlasStore
+        atlas = AtlasStore(os.path.join(args.state, "atlas"))
+        print(f"[unison] atlas:  {os.path.join(args.state, 'atlas')}", flush=True)
+    except Exception as exc:
+        print(f"[unison] atlas disabled: {exc}", flush=True)
+
     token = None
     if os.path.isfile(args.token_file):
         with open(args.token_file, "r") as fh:
@@ -527,14 +609,14 @@ def main():
 
     threads = [threading.Thread(
         target=_serve_plain,
-        args=(args.root, store, token, args.http),
+        args=(args.root, store, token, args.http, atlas),
         daemon=True)]
 
     if not args.no_tls:
         if os.path.isfile(args.cert) and os.path.isfile(args.key):
             threads.append(threading.Thread(
                 target=_serve_tls,
-                args=(args.root, store, token, args.https, args.cert, args.key),
+                args=(args.root, store, token, args.https, args.cert, args.key, atlas),
                 daemon=True))
         else:
             print(f"[unison] cert/key missing; HTTPS disabled", flush=True)
