@@ -19,23 +19,33 @@
     --hover: #1f242c;
   }
   * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0; height: 100%;
+  html, body { margin: 0; padding: 0; height: 100%;
     background: var(--bg); color: var(--text);
-    font: 13px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
-  }
+    font: 13px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
   header {
     display: flex; align-items: center; gap: 16px;
-    padding: 10px 16px; border-bottom: 1px solid var(--border);
-    background: var(--panel);
-    flex-wrap: wrap;
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    background: var(--panel); flex-wrap: wrap;
   }
-  header h1 {
-    margin: 0; font-size: 16px; font-weight: 600;
-    color: var(--accent); letter-spacing: 0.5px;
-  }
-  header .status { color: var(--muted); font-size: 12px; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.5px; }
   header .right { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  header .status { color: var(--muted); font-size: 12px; }
+
+  nav.tabs { display: flex; gap: 0; padding: 0 12px;
+    background: var(--panel); border-bottom: 1px solid var(--border); }
+  nav.tabs a {
+    padding: 8px 16px; color: var(--muted); text-decoration: none;
+    border-bottom: 2px solid transparent; cursor: pointer;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  nav.tabs a:hover { color: var(--text); }
+  nav.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+  nav.tabs .badge {
+    display: inline-block; min-width: 18px; padding: 0 4px;
+    background: var(--panel2); border-radius: 9px; margin-left: 6px;
+    font-size: 10px; color: var(--text);
+  }
 
   button, .btn {
     background: transparent; color: var(--text);
@@ -51,18 +61,14 @@
     padding: 6px 10px; border-radius: 4px; font: inherit;
   }
 
-  main {
-    display: grid;
-    grid-template-rows: 1fr 1fr;
-    gap: 12px;
-    padding: 12px;
-    height: calc(100% - 49px);
-  }
-  .top { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; min-height: 0; }
+  main { height: calc(100% - 49px - 37px); overflow: hidden; }
+  .page { height: 100%; overflow: auto; padding: 12px; }
+  .page[hidden] { display: none; }
+
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 6px; overflow: hidden;
-    display: flex; flex-direction: column;
+    display: flex; flex-direction: column; min-height: 0;
   }
   .panel h2 {
     margin: 0; padding: 8px 12px; font-size: 12px; font-weight: 600;
@@ -80,60 +86,44 @@
   tr.row:hover { background: var(--hover); }
   tr.row.selected { background: var(--panel2); border-left: 2px solid var(--accent); }
 
-  .status-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    background: var(--err); margin-right: 6px; vertical-align: middle;
-  }
+  .status-dot { display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--err); margin-right: 6px; vertical-align: middle; }
   .status-dot.ok { background: var(--ok); }
   .status-dot.warn { background: var(--warn); }
-
   .small { font-size: 11px; color: var(--muted); }
 
-  /* Activity panel: structured event blocks */
-  #log { padding: 6px 10px; font-size: 12px; }
-  .ev {
-    margin: 6px 0; padding: 6px 10px;
+  .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px;
+    height: 100%; min-height: 0; }
+  .grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 12px;
+    height: 100%; min-height: 0; }
+
+  .ev { margin: 6px 0; padding: 6px 10px;
     border-left: 2px solid var(--border); background: var(--panel2);
-    border-radius: 0 4px 4px 0;
-  }
+    border-radius: 0 4px 4px 0; }
   .ev.out { border-left-color: var(--accent); }
   .ev.in  { border-left-color: var(--ok); }
   .ev.err { border-left-color: var(--err); }
-  .ev .head {
-    display: flex; gap: 8px; align-items: baseline;
-    font-size: 11px; color: var(--muted); margin-bottom: 2px;
-  }
+  .ev .head { display: flex; gap: 8px; align-items: baseline;
+    font-size: 11px; color: var(--muted); margin-bottom: 2px; }
   .ev .head .who { color: var(--text); }
-  .ev .body { white-space: pre-wrap; word-break: break-word; }
   .ev pre { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word;
-            font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+    font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
 
-  /* Command bar */
-  .cmdbar {
-    display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border);
-    background: var(--panel); align-items: center; flex-wrap: wrap;
-  }
-  .cmdbar .target {
-    font-size: 12px; color: var(--muted);
-    padding: 4px 10px; border: 1px dashed var(--border); border-radius: 4px;
-  }
+  .cmdbar { display: flex; gap: 8px; padding: 8px 12px;
+    border-top: 1px solid var(--border); background: var(--panel);
+    align-items: center; flex-wrap: wrap; }
+  .cmdbar .target { font-size: 12px; color: var(--muted);
+    padding: 4px 10px; border: 1px dashed var(--border); border-radius: 4px; }
   .cmdbar .target b { color: var(--accent); }
   .cmdbar input[type=text] { flex: 1; min-width: 180px; }
-  .cmdbar .quick {
-    display: flex; gap: 4px; padding-left: 8px;
-    border-left: 1px solid var(--border);
-  }
+  .cmdbar .quick { display: flex; gap: 4px; padding-left: 8px;
+    border-left: 1px solid var(--border); }
 
-  .auth-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.85);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 100;
-  }
+  .auth-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85);
+    display: flex; align-items: center; justify-content: center; z-index: 100; }
   .auth-overlay[hidden] { display: none !important; }
-  .auth-card {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 24px; width: 420px;
-  }
+  .auth-card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 24px; width: 420px; }
   .auth-card h2 { margin: 0 0 12px 0; color: var(--accent); }
   .auth-card label { display: block; margin: 8px 0 4px; color: var(--muted); }
   .auth-card input { width: 100%; }
@@ -141,39 +131,58 @@
   .auth-card .row button { flex: 1; }
   .auth-card .err { color: var(--err); font-size: 12px; min-height: 16px; }
 
-  .ws-led {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--err); margin-right: 4px;
-  }
+  .ws-led { display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--err); margin-right: 4px; }
   .ws-led.ok { background: var(--ok); }
 
-  /* Device detail modal */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.7);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 80;
-  }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: flex; align-items: center; justify-content: center; z-index: 80; }
   .modal-overlay[hidden] { display: none !important; }
-  .modal-card {
-    background: var(--panel); border: 1px solid var(--border);
+  .modal-card { background: var(--panel); border: 1px solid var(--border);
     border-radius: 8px; width: min(900px, 95vw); max-height: 85vh;
-    display: flex; flex-direction: column;
-  }
-  .modal-card header {
-    background: transparent; border-bottom: 1px solid var(--border);
-    padding: 12px 16px;
-  }
+    display: flex; flex-direction: column; }
+  .modal-card header { background: transparent; border-bottom: 1px solid var(--border);
+    padding: 12px 16px; }
   .modal-card header h2 { color: var(--accent); margin: 0; font-size: 16px; }
   .modal-card .body { padding: 12px 16px; overflow: auto; flex: 1; }
-  .modal-card .footer {
-    padding: 10px 16px; border-top: 1px solid var(--border);
-    display: flex; gap: 6px; flex-wrap: wrap;
-  }
+  .modal-card .footer { padding: 10px 16px; border-top: 1px solid var(--border);
+    display: flex; gap: 6px; flex-wrap: wrap; }
   .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 12px; font-size: 12px; }
   .kv .k { color: var(--muted); }
   .kv .v { color: var(--text); word-break: break-all; }
   pre.json { background: var(--bg); padding: 8px; border-radius: 4px;
              font-size: 11px; overflow: auto; max-height: 200px; margin: 4px 0; }
+
+  /* Mine page */
+  .miner-card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
+  .miner-card h3 { margin: 0 0 6px 0; font-size: 13px; color: var(--accent); }
+  .progress { background: var(--bg); border-radius: 3px; height: 6px;
+    overflow: hidden; margin-top: 4px; }
+  .progress > div { background: var(--accent); height: 100%;
+    transition: width 0.3s ease; }
+  .pill { display: inline-block; padding: 2px 8px; font-size: 11px;
+    border: 1px solid var(--border); border-radius: 12px; margin-right: 4px;
+    background: var(--panel2); }
+  .pill.mining { color: var(--accent); border-color: var(--accent); }
+  .pill.paused { color: var(--warn); border-color: var(--warn); }
+  .pill.done   { color: var(--ok);   border-color: var(--ok);   }
+  .pill.error  { color: var(--err);  border-color: var(--err);  }
+
+  /* Map page */
+  #map-canvas { background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; width: 100%; height: 100%; cursor: grab; }
+  #map-canvas:active { cursor: grabbing; }
+  .legend { display: flex; gap: 10px; padding: 6px 10px; flex-wrap: wrap;
+    border-top: 1px solid var(--border); background: var(--panel2); }
+  .legend .item { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Atlas page */
+  .form-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .form-row input { width: 120px; }
+  .form-row input.wide { width: 200px; }
 </style>
 </head>
 <body>
@@ -187,59 +196,149 @@
     <button id="bulk-update-os" class="primary" title="exec 'upm upgrade -y' on every device">update OS all</button>
     <button id="bulk-update-pkg" class="primary" title="exec 'upm update' on every device">update pkgs all</button>
     <button id="bulk-reboot" class="danger" title="exec 'reboot' on every device">reboot all</button>
-    <button id="logout-btn" title="forget the saved API config">logout</button>
+    <button id="logout-btn">logout</button>
   </div>
 </header>
 
+<nav class="tabs" id="nav-tabs">
+  <a data-tab="devices" class="active">Devices <span class="badge" id="badge-devices">0</span></a>
+  <a data-tab="mine">Mine <span class="badge" id="badge-mine">0</span></a>
+  <a data-tab="atlas">Atlas</a>
+  <a data-tab="map">Map</a>
+  <a data-tab="cron">Cron</a>
+  <a data-tab="logs">Logs</a>
+</nav>
+
 <main>
-  <div class="top">
-    <section class="panel">
-      <h2>
-        <span>Devices</span>
-        <span class="right"><button id="refresh-btn">refresh</button></span>
+  <!-- ==================== Devices ==================== -->
+  <div class="page" id="page-devices">
+    <div class="grid-2">
+      <section class="panel">
+        <h2><span>Devices</span>
+          <span class="right"><button id="refresh-btn">refresh</button></span></h2>
+        <div class="body">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Role</th><th>Name</th><th>Ver</th><th>Seen</th><th>Fuel</th><th>Inv</th></tr>
+            </thead>
+            <tbody id="devices-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2><span>Selected device</span></h2>
+        <div class="body" id="dev-detail" style="padding: 10px 14px;">
+          <span class="small">click a device row to inspect</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ==================== Mine ==================== -->
+  <div class="page" id="page-mine" hidden>
+    <section class="panel" style="height:100%;">
+      <h2><span>Mining turtles — live state from heartbeat</span>
+        <span class="right small">refreshes every 2s</span></h2>
+      <div class="body" id="mine-body" style="padding: 12px;"></div>
+    </section>
+  </div>
+
+  <!-- ==================== Atlas ==================== -->
+  <div class="page" id="page-atlas" hidden>
+    <section class="panel" style="height:100%;">
+      <h2><span>Atlas — shared landmarks</span>
+        <span class="right">
+          <button id="atlas-refresh">refresh</button>
+        </span>
       </h2>
+      <div class="form-row">
+        <span class="small">add:</span>
+        <input id="atlas-name" placeholder="name" class="wide" />
+        <input id="atlas-x" placeholder="x" type="number" />
+        <input id="atlas-y" placeholder="y" type="number" />
+        <input id="atlas-z" placeholder="z" type="number" />
+        <input id="atlas-tags" placeholder="tags (comma)" class="wide" />
+        <button id="atlas-add" class="primary">add</button>
+        <span class="small">via host:</span>
+        <select id="atlas-host"></select>
+      </div>
       <div class="body">
         <table>
-          <thead>
-            <tr>
-              <th>ID</th><th>Role</th><th>Name</th><th>Ver</th><th>Seen</th><th>Fuel</th><th>Inv</th>
-            </tr>
-          </thead>
-          <tbody id="devices-tbody"></tbody>
+          <thead><tr>
+            <th>Name</th><th>X</th><th>Y</th><th>Z</th><th>Tags</th><th>By</th><th></th>
+          </tr></thead>
+          <tbody id="atlas-tbody"></tbody>
         </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>
-        <span>Selected device</span>
-      </h2>
-      <div class="body" id="dev-detail" style="padding: 10px 14px;">
-        <span class="small">click a device row to inspect it</span>
       </div>
     </section>
   </div>
 
-  <section class="panel">
-    <h2>
-      <span>Activity</span>
-      <span class="right"><button id="clear-log">clear</button></span>
-    </h2>
-    <div class="body" id="log"></div>
-    <div class="cmdbar">
-      <span class="target">target: <b id="target-name">(none)</b></span>
-      <input id="exec-input" type="text" placeholder='shell command for selected device — Enter to run' autocomplete="off" />
-      <button id="exec-btn" class="primary">exec</button>
-      <button id="ping-btn">ping</button>
-      <span class="quick">
-        <button data-quick="version">version</button>
-        <button data-quick="service list">services</button>
-        <button data-quick="upm list">pkgs</button>
-        <button data-quick="upm upgrade -y">upgrade</button>
-        <button data-quick="reboot" class="danger">reboot</button>
-      </span>
-    </div>
-  </section>
+  <!-- ==================== Map ==================== -->
+  <div class="page" id="page-map" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>World map (top-down x/z)</span>
+        <span class="right small">drag to pan, wheel to zoom</span></h2>
+      <div class="body" style="padding: 0; position: relative;">
+        <canvas id="map-canvas"></canvas>
+      </div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:#58a6ff;"></span>turtle</span>
+        <span class="item"><span class="swatch" style="background:#3fb950;"></span>tower</span>
+        <span class="item"><span class="swatch" style="background:#d29922;"></span>computer</span>
+        <span class="item"><span class="swatch" style="background:#f85149;"></span>pocket</span>
+        <span class="item"><span class="swatch" style="background:#e57fd8;"></span>landmark</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== Cron ==================== -->
+  <div class="page" id="page-cron" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Cron — periodic tasks (per-device)</span>
+        <span class="right">
+          <select id="cron-device"></select>
+          <button id="cron-refresh">refresh</button>
+        </span>
+      </h2>
+      <div class="form-row">
+        <span class="small">add:</span>
+        <input id="cron-name" placeholder="name" class="wide" />
+        <input id="cron-expr" placeholder="*/5 * * * *  or  every:60" class="wide" />
+        <input id="cron-cmd"  placeholder="shell command" class="wide" />
+        <button id="cron-add" class="primary">add</button>
+      </div>
+      <div class="body">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>On</th><th>Schedule</th><th>Runs</th><th>Last</th><th>Command</th><th></th>
+          </tr></thead>
+          <tbody id="cron-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== Logs ==================== -->
+  <div class="page" id="page-logs" hidden>
+    <section class="panel" style="height: 100%;">
+      <h2><span>Activity</span>
+        <span class="right"><button id="clear-log">clear</button></span></h2>
+      <div class="body" id="log" style="padding: 6px 10px;"></div>
+      <div class="cmdbar">
+        <span class="target">target: <b id="target-name">(none)</b></span>
+        <input id="exec-input" type="text" placeholder='shell command — Enter to run' autocomplete="off" />
+        <button id="exec-btn" class="primary">exec</button>
+        <button id="ping-btn">ping</button>
+        <span class="quick">
+          <button data-quick="version">version</button>
+          <button data-quick="service list">services</button>
+          <button data-quick="upm list">pkgs</button>
+          <button data-quick="upm upgrade -y">upgrade</button>
+          <button data-quick="reboot" class="danger">reboot</button>
+        </span>
+      </div>
+    </section>
+  </div>
 </main>
 
 <div class="modal-overlay" id="device-modal" hidden>
@@ -253,11 +352,11 @@
 <div class="auth-overlay" id="auth-overlay" hidden>
   <div class="auth-card">
     <h2>UnisonOS Console</h2>
-    <p class="small">Enter the API base URL and bearer token of your VPS.</p>
+    <p class="small">API base URL and bearer token of your VPS.</p>
     <label>API base</label>
     <input id="auth-base" type="text" placeholder="http://upm.hush-vp.ru:9273" />
     <label>Bearer token</label>
-    <input id="auth-token" type="password" placeholder="(leave blank if server has no auth)" />
+    <input id="auth-token" type="password" placeholder="(leave blank if no auth)" />
     <div class="err" id="auth-err"></div>
     <div class="row">
       <button id="auth-cancel">cancel</button>
@@ -283,10 +382,18 @@
   let devices = {};
   const cmdHistory = [];
   let cmdHistoryIdx = -1;
+  let activeTab = 'devices';
+
+  // Pending RPC replies keyed by message id, so we can route them back
+  // to per-tab handlers (atlas list, cron list, etc.) without polluting
+  // the global activity log.
+  const replyHandlers = {};
 
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // ---- config / auth ---------------------------------------------------
 
   function loadCfg() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
@@ -300,7 +407,6 @@
     const port = url.port || (url.protocol === 'https:' ? 9274 : 9273);
     return `${url.protocol}//${url.hostname}:${port}`;
   }
-
   function showAuth(err) {
     $('auth-overlay').hidden = false;
     $('auth-err').textContent = err || '';
@@ -319,8 +425,7 @@
     }
     const r = await fetch(cfg.base + path, { ...opts, headers });
     if (r.status === 401 || r.status === 403) {
-      showAuth('auth failed');
-      throw new Error('unauthorized');
+      showAuth('auth failed'); throw new Error('unauthorized');
     }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const ct = r.headers.get('content-type') || '';
@@ -382,9 +487,13 @@
     if (age < 120) return 'warn';
     return '';
   }
-  function isConsoleId(id) { return /^console-/i.test(id); }
   function isStaleConsole(d) {
-    return d.role === 'console' || isConsoleId(d.id || '');
+    return d.role === 'console' || /^console-/i.test(d.id || '');
+  }
+  function liveDevices() {
+    return Object.entries(devices)
+      .filter(([id, d]) => id !== myId && !isStaleConsole({ ...d, id }))
+      .reduce((acc, [id, d]) => (acc[id] = d, acc), {});
   }
 
   // ---- Activity log ----------------------------------------------------
@@ -395,8 +504,7 @@
     const t = new Date().toLocaleTimeString();
     const head = document.createElement('div');
     head.className = 'head';
-    head.innerHTML =
-      `<span>${t}</span>` +
+    head.innerHTML = `<span>${t}</span>` +
       `<span class="who">${escapeHtml(opts.who || '')}</span>` +
       (opts.tag ? `<span>${escapeHtml(opts.tag)}</span>` : '');
     div.appendChild(head);
@@ -415,17 +523,95 @@
     while (log.children.length > 300) log.removeChild(log.firstChild);
   }
 
-  // ---- Devices ---------------------------------------------------------
+  // ---- Send / receive --------------------------------------------------
+
+  function newMsgId() { return 'm-' + Math.random().toString(36).slice(2, 10); }
+
+  async function pushMessage(deviceId, body, opts) {
+    body = body || {};
+    body.from = body.from || myId;
+    if (opts && opts.id) body.id = opts.id;
+    try {
+      await api('/api/messages/' + encodeURIComponent(deviceId),
+                { method: 'POST', body });
+      return true;
+    } catch (e) {
+      logEvent('err', { who: deviceId, body: 'send failed: ' + e.message });
+      return false;
+    }
+  }
+
+  // Send and await a *_reply by in_reply_to. Times out after `ms`.
+  function rpc(deviceId, body, ms) {
+    ms = ms || 5000;
+    const id = newMsgId();
+    body.id = id;
+    return new Promise(async (resolve, reject) => {
+      const tt = setTimeout(() => {
+        delete replyHandlers[id]; reject(new Error('timeout'));
+      }, ms);
+      replyHandlers[id] = (msg) => { clearTimeout(tt); resolve(msg); };
+      const ok = await pushMessage(deviceId, body, { id });
+      if (!ok) { clearTimeout(tt); delete replyHandlers[id]; reject(new Error('send failed')); }
+    });
+  }
+
+  async function execOn(id, cmd) {
+    if (!id) { logEvent('err', { who: '-', body: 'select a device first' }); return; }
+    if (!cmd) return;
+    logEvent('out', { who: '→ ' + id, tag: 'exec', body: cmd });
+    await pushMessage(id, { type: 'exec', command: cmd });
+  }
+
+  function handleInbound(envelope) {
+    const body = envelope.msg || {};
+    const from = body.from || (envelope.from) || '?';
+    const t = body.type || '?';
+
+    // Route to a pending RPC waiter if matching.
+    const replyTo = body.in_reply_to;
+    if (replyTo && replyHandlers[replyTo]) {
+      const h = replyHandlers[replyTo];
+      delete replyHandlers[replyTo];
+      try { h(body); } catch (_) {}
+      return;
+    }
+
+    if (t === 'pong') {
+      const rtt = body.client_ts ? (Date.now() - body.client_ts) : null;
+      logEvent('in', { who: '← ' + from, tag: 'pong',
+        body: rtt != null ? 'rtt ' + rtt + 'ms' : 'rtt ?' });
+      return;
+    }
+    if (t === 'exec_reply') {
+      const out = body.output || (body.err ? '[err] ' + body.err : '(no output)');
+      logEvent(body.ok === false ? 'err' : 'in', {
+        who: '← ' + from,
+        tag: body.command ? `exec_reply: ${body.command}` : 'exec_reply',
+        pre: out,
+      });
+      return;
+    }
+    if (t.endsWith('_reply')) {
+      logEvent('in', { who: '← ' + from, tag: t,
+        pre: JSON.stringify(body, null, 2) });
+      return;
+    }
+    logEvent('in', { who: '← ' + from, tag: t,
+      pre: JSON.stringify(body) });
+  }
+
+  // ---- Devices page ----------------------------------------------------
 
   async function refresh() {
     try {
       devices = await api('/api/devices');
       $('conn-status').textContent = 'online';
       $('conn-status').style.color = 'var(--ok)';
-      const ids = Object.keys(devices)
-        .filter(id => id !== myId && !isStaleConsole({ ...(devices[id] || {}), id }))
-        .sort();
+      const live = liveDevices();
+      const ids = Object.keys(live).sort();
       $('device-count').textContent = ids.length + ' device' + (ids.length === 1 ? '' : 's');
+      $('badge-devices').textContent = ids.length;
       const tbody = $('devices-tbody');
       tbody.innerHTML = '';
       for (const id of ids) {
@@ -448,6 +634,12 @@
         tbody.appendChild(tr);
       }
       if (selectedId) renderSelectedDetail();
+
+      // Update tab-specific data after a refresh.
+      if (activeTab === 'mine') renderMine();
+      if (activeTab === 'map')  renderMap();
+      if (activeTab === 'atlas') populateAtlasHosts();
+      if (activeTab === 'cron')  populateCronDevices();
     } catch (e) {
       $('conn-status').textContent = 'offline (' + e.message + ')';
       $('conn-status').style.color = 'var(--err)';
@@ -465,7 +657,7 @@
 
   function renderSelectedDetail() {
     if (!selectedId || !devices[selectedId]) {
-      $('dev-detail').innerHTML = '<span class="small">click a device row to inspect it</span>';
+      $('dev-detail').innerHTML = '<span class="small">click a device row to inspect</span>';
       return;
     }
     const d = devices[selectedId];
@@ -490,86 +682,14 @@
     if (more) more.addEventListener('click', () => openDeviceDetail(selectedId));
   }
 
-  // ---- Send / receive ---------------------------------------------------
-
-  async function pushMessage(deviceId, body) {
-    body = body || {};
-    body.from = body.from || myId;
-    try {
-      await api('/api/messages/' + encodeURIComponent(deviceId),
-                { method: 'POST', body });
-      return true;
-    } catch (e) {
-      logEvent('err', { who: deviceId, body: 'send failed: ' + e.message });
-      return false;
-    }
-  }
-
-  async function execOn(id, cmd) {
-    if (!id) { logEvent('err', { who: '-', body: 'select a device first' }); return; }
-    if (!cmd) return;
-    logEvent('out', { who: '→ ' + id, tag: 'exec', body: cmd });
-    await pushMessage(id, { type: 'exec', command: cmd });
-  }
-
-  function handleInbound(envelope) {
-    const body = envelope.msg || {};
-    const from = body.from || (envelope.from) || '?';
-    const t = body.type || '?';
-    if (t === 'pong') {
-      // Use our own send-timestamp echoed back by the device. Avoids
-      // clock-skew between the MC server and the browser.
-      const rtt = body.client_ts ? (Date.now() - body.client_ts) : null;
-      logEvent('in', { who: '← ' + from, tag: 'pong',
-        body: rtt != null ? 'rtt ' + rtt + 'ms' : 'rtt ?' });
-      return;
-    }
-    if (t === 'exec_reply') {
-      const out = body.output || (body.err ? '[err] ' + body.err : '(no output)');
-      logEvent(body.ok === false ? 'err' : 'in', {
-        who: '← ' + from,
-        tag: body.command ? `exec_reply: ${body.command}` : 'exec_reply',
-        pre: out,
-      });
-      return;
-    }
-    if (t.endsWith('_reply')) {
-      logEvent('in', { who: '← ' + from, tag: t,
-        pre: JSON.stringify(body, null, 2) });
-      return;
-    }
-    // Unknown message — just summarise.
-    logEvent('in', { who: '← ' + from, tag: t,
-      pre: JSON.stringify(body) });
-  }
-
-  // ---- Bulk ops --------------------------------------------------------
-
-  async function bulkExec(cmd, label) {
-    const ids = Object.keys(devices)
-      .filter(id => id !== myId && !isStaleConsole({ ...(devices[id] || {}), id }));
-    if (ids.length === 0) { logEvent('err', { who: '-', body: 'no devices online' }); return; }
-    if (!confirm(`Run "${cmd}" on ${ids.length} device(s)?`)) return;
-    logEvent('out', { who: 'broadcast', tag: label || cmd, body: `${cmd}  (${ids.length} target(s))` });
-    for (const id of ids) await pushMessage(id, { type: 'exec', command: cmd });
-  }
-
-  // ---- Device detail modal --------------------------------------------
-
   function openDeviceDetail(id) {
-    const d = devices[id];
-    if (!d) return;
+    const d = devices[id]; if (!d) return;
     selectedId = id; $('target-name').textContent = id;
     $('dm-title').textContent = `${id} — ${d.role || '?'} v${d.version || '?'}`;
-    const dmBody = $('dm-body');
-    const m = d.metrics || {};
-    dmBody.innerHTML = `
-      <pre class="json">${escapeHtml(JSON.stringify(d, null, 2))}</pre>
-    `;
-    const actions = $('dm-actions');
-    actions.innerHTML = '';
+    $('dm-body').innerHTML = `<pre class="json">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+    const actions = $('dm-actions'); actions.innerHTML = '';
     const buttons = [
-      { label: 'ping', fn: () => pushMessage(id, { type: 'ping', ts: Date.now() }) },
+      { label: 'ping', fn: () => { pushMessage(id, { type: 'ping', ts: Date.now() }); logEvent('out', { who: '→ ' + id, tag: 'ping' }); } },
       { label: 'version', cmd: 'version' },
       { label: 'service list', cmd: 'service list' },
       { label: 'upm list', cmd: 'upm list' },
@@ -579,15 +699,14 @@
     if (d.role === 'turtle') {
       buttons.splice(2, 0,
         { label: 'mine status', cmd: 'mine status' },
-        { label: 'mine start', cmd: 'mine start' });
+        { label: 'mine 16 3 16', cmd: 'mine 16 3 16' },
+        { label: 'mine -X', cmd: 'mine -X', danger: true });
     }
     for (const b of buttons) {
       const el = document.createElement('button');
       el.textContent = b.label;
       if (b.danger) el.className = 'danger';
-      el.addEventListener('click', () => {
-        if (b.fn) b.fn(); else execOn(id, b.cmd);
-      });
+      el.addEventListener('click', () => { if (b.fn) b.fn(); else execOn(id, b.cmd); });
       actions.appendChild(el);
     }
     const close = document.createElement('button');
@@ -596,6 +715,334 @@
     close.addEventListener('click', () => $('device-modal').hidden = true);
     actions.appendChild(close);
     $('device-modal').hidden = false;
+  }
+
+  // ---- Bulk ops --------------------------------------------------------
+
+  async function bulkExec(cmd, label) {
+    const live = liveDevices();
+    const ids = Object.keys(live);
+    if (ids.length === 0) { logEvent('err', { who: '-', body: 'no devices online' }); return; }
+    if (!confirm(`Run "${cmd}" on ${ids.length} device(s)?`)) return;
+    logEvent('out', { who: 'broadcast', tag: label || cmd, body: `${cmd}  (${ids.length} target(s))` });
+    for (const id of ids) await pushMessage(id, { type: 'exec', command: cmd });
+  }
+
+  // ---- Mine page -------------------------------------------------------
+
+  function renderMine() {
+    const live = liveDevices();
+    const turtles = Object.entries(live)
+      .filter(([_, d]) => d.role === 'turtle')
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    $('badge-mine').textContent = turtles.length;
+
+    const body = $('mine-body');
+    if (turtles.length === 0) {
+      body.innerHTML = '<span class="small">no turtles online</span>';
+      return;
+    }
+    body.innerHTML = '';
+    for (const [id, d] of turtles) {
+      const m = d.metrics || {};
+      const j = m.mine;
+      const card = document.createElement('div');
+      card.className = 'miner-card';
+
+      const phase = j ? (j.phase || 'idle') : 'idle';
+      const pillClass = phase === 'mining' ? 'mining'
+                      : phase === 'paused' ? 'paused'
+                      : phase === 'done'   ? 'done'
+                      : phase === 'error'  ? 'error' : '';
+      let progress = 0;
+      if (j && j.shape) {
+        const total = (j.shape.w || 1) * (j.shape.h || 1) * (j.shape.d || 1);
+        progress = Math.min(100, Math.round(((j.dug || 0) * 100) / total));
+      }
+
+      card.innerHTML = `
+        <h3>${escapeHtml(id)} — ${escapeHtml(d.name || '-')}</h3>
+        <div>
+          <span class="pill ${pillClass}">${escapeHtml(phase)}</span>
+          <span class="pill">fuel ${m.fuel ?? '?'}</span>
+          <span class="pill">inv ${m.inventory_used ?? '?'} / 16</span>
+          ${j && j.pos ? `<span class="pill">@ ${j.pos.x},${j.pos.y},${j.pos.z}</span>` : ''}
+          ${j && j.shape ? `<span class="pill">${j.shape.w}x${j.shape.h}x${j.shape.d}</span>` : ''}
+          <span class="pill">dug ${j ? (j.dug || 0) : 0}</span>
+        </div>
+        ${j && j.shape ? `<div class="progress"><div style="width:${progress}%;"></div></div>` : ''}
+        ${j && j.error ? `<div class="small" style="color:var(--err);margin-top:4px;">err: ${escapeHtml(j.error)}</div>` : ''}
+        <div style="margin-top: 8px;">
+          <button data-mine-cmd="mine status" data-id="${escapeHtml(id)}">status</button>
+          <button data-mine-cmd="mine 16 3 16" data-id="${escapeHtml(id)}">start 16x3x16</button>
+          <button data-mine-cmd="mine 32 5 16" data-id="${escapeHtml(id)}">start 32x5x16</button>
+          <button data-mine-cmd="mine -X" class="danger" data-id="${escapeHtml(id)}">stop</button>
+        </div>
+      `;
+      body.appendChild(card);
+    }
+    body.querySelectorAll('button[data-mine-cmd]').forEach(b => {
+      b.addEventListener('click', () => execOn(b.dataset.id, b.dataset.mineCmd));
+    });
+  }
+
+  // ---- Atlas page ------------------------------------------------------
+
+  function populateAtlasHosts() {
+    const live = liveDevices();
+    const sel = $('atlas-host');
+    const cur = sel.value;
+    sel.innerHTML = '';
+    // Any non-pocket non-turtle is a likely atlas host. We don't filter
+    // by capability since atlas can also run on a master / computer.
+    const ids = Object.keys(live).sort();
+    for (const id of ids) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = `${id}  (${live[id].role || '?'})`;
+      sel.appendChild(opt);
+    }
+    if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+  }
+
+  async function refreshAtlas() {
+    const host = $('atlas-host').value;
+    if (!host) return;
+    try {
+      const reply = await rpc(host, { type: 'atlas_list' }, 5000);
+      const items = reply.items || reply.landmarks || [];
+      const tbody = $('atlas-tbody');
+      tbody.innerHTML = '';
+      for (const it of items) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(it.name || '-')}</td>
+          <td>${it.x}</td><td>${it.y}</td><td>${it.z}</td>
+          <td>${escapeHtml((it.tags || []).join(','))}</td>
+          <td>${escapeHtml(it.added_by || '-')}</td>
+          <td><button class="danger" data-rm="${escapeHtml(it.name)}">delete</button></td>
+        `;
+        tbody.appendChild(tr);
+      }
+      tbody.querySelectorAll('button[data-rm]').forEach(b => {
+        b.addEventListener('click', async () => {
+          const name = b.dataset.rm;
+          if (!confirm(`Remove "${name}"?`)) return;
+          try { await rpc(host, { type: 'atlas_remove', name }, 4000); } catch (_) {}
+          refreshAtlas();
+        });
+      });
+    } catch (e) {
+      $('atlas-tbody').innerHTML =
+        `<tr><td colspan="7" class="small" style="color:var(--err);">atlas_list failed: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function atlasAdd() {
+    const host = $('atlas-host').value;
+    const name = $('atlas-name').value.trim();
+    const x = parseInt($('atlas-x').value, 10);
+    const y = parseInt($('atlas-y').value, 10);
+    const z = parseInt($('atlas-z').value, 10);
+    const tags = $('atlas-tags').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!host || !name || isNaN(x) || isNaN(y) || isNaN(z)) {
+      logEvent('err', { who: 'atlas', body: 'name + xyz + host required' }); return;
+    }
+    try {
+      await rpc(host, { type: 'atlas_add', name, x, y, z, tags }, 4000);
+      $('atlas-name').value = ''; $('atlas-tags').value = '';
+      refreshAtlas();
+    } catch (e) {
+      logEvent('err', { who: 'atlas', body: 'add failed: ' + e.message });
+    }
+  }
+
+  // ---- Map page --------------------------------------------------------
+
+  let mapView = { cx: 0, cz: 0, scale: 1 };  // cx/cz: world coords at canvas centre
+  let mapDrag = null;
+
+  function roleColor(role) {
+    return role === 'turtle' ? '#58a6ff'
+         : role === 'tower' || role === 'master' ? '#3fb950'
+         : role === 'pocket' ? '#f85149'
+         : role === 'monitor-host' ? '#e57fd8'
+         : '#d29922';
+  }
+
+  function renderMap() {
+    const c = $('map-canvas'); if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    c.width = w * dpr; c.height = h * dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    // Grid
+    ctx.strokeStyle = '#1f242c'; ctx.lineWidth = 1;
+    const gridStep = 16 * mapView.scale;
+    if (gridStep > 8) {
+      const ox = (w / 2 - mapView.cx * mapView.scale) % gridStep;
+      const oz = (h / 2 - mapView.cz * mapView.scale) % gridStep;
+      for (let x = ox; x < w; x += gridStep) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      for (let y = oz; y < h; y += gridStep) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+    }
+
+    // Origin axis
+    const ox0 = w / 2 - mapView.cx * mapView.scale;
+    const oz0 = h / 2 - mapView.cz * mapView.scale;
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ox0, 0); ctx.lineTo(ox0, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, oz0); ctx.lineTo(w, oz0); ctx.stroke();
+
+    // Devices
+    const live = liveDevices();
+    for (const id of Object.keys(live)) {
+      const d = live[id]; const p = d.metrics && d.metrics.position;
+      if (!p) continue;
+      const sx = w / 2 + (p.x - mapView.cx) * mapView.scale;
+      const sz = h / 2 + (p.z - mapView.cz) * mapView.scale;
+      ctx.fillStyle = roleColor(d.role);
+      ctx.beginPath();
+      ctx.arc(sx, sz, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c9d1d9';
+      ctx.font = '11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(`${id} ${d.name ? '('+d.name+')' : ''}`, sx + 8, sz + 3);
+      ctx.fillStyle = '#8b949e';
+      ctx.fillText(`${p.x},${p.y},${p.z}`, sx + 8, sz + 16);
+    }
+
+    // Compass
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText('+x →', w - 50, h - 12);
+    ctx.fillText('+z ↓', 8, 14);
+  }
+
+  function attachMapHandlers() {
+    const c = $('map-canvas');
+    if (c._wired) return;
+    c._wired = true;
+    c.addEventListener('mousedown', (e) => {
+      mapDrag = { sx: e.clientX, sy: e.clientY, cx: mapView.cx, cz: mapView.cz };
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!mapDrag) return;
+      mapView.cx = mapDrag.cx - (e.clientX - mapDrag.sx) / mapView.scale;
+      mapView.cz = mapDrag.cz - (e.clientY - mapDrag.sy) / mapView.scale;
+      renderMap();
+    });
+    window.addEventListener('mouseup', () => mapDrag = null);
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+      mapView.scale = Math.max(0.1, Math.min(10, mapView.scale * factor));
+      renderMap();
+    }, { passive: false });
+  }
+
+  // ---- Cron page -------------------------------------------------------
+
+  function populateCronDevices() {
+    const live = liveDevices();
+    const sel = $('cron-device');
+    const cur = sel.value;
+    sel.innerHTML = '';
+    for (const id of Object.keys(live).sort()) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = `${id}  (${live[id].role || '?'})`;
+      sel.appendChild(opt);
+    }
+    if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+  }
+
+  // Cron commands are issued via exec; replies arrive as exec_reply.
+  // We parse the printed lines back into rows for the table.
+  async function refreshCron() {
+    const host = $('cron-device').value; if (!host) return;
+    const tbody = $('cron-tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="small">loading…</td></tr>';
+    try {
+      const reply = await rpc(host, { type: 'exec', command: 'cron list' }, 6000);
+      const out = reply.output || '';
+      const lines = out.split('\n').slice(1);   // skip header
+      const rows = [];
+      for (const ln of lines) {
+        if (!ln.trim()) continue;
+        // NAME(16) ON(5) WHEN(12) RUNS(6) LAST(7) COMMAND
+        const m = ln.match(/^(\S+)\s+(yes|no)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+        if (m) rows.push({ name: m[1], on: m[2], when: m[3], runs: m[4], last: m[5], cmd: m[6].trim() });
+      }
+      tbody.innerHTML = '';
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="small">(no cron units)</td></tr>';
+      }
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(r.name)}</td>
+          <td>${escapeHtml(r.on)}</td>
+          <td>${escapeHtml(r.when)}</td>
+          <td>${escapeHtml(r.runs)}</td>
+          <td>${escapeHtml(r.last)}</td>
+          <td>${escapeHtml(r.cmd)}</td>
+          <td>
+            <button data-act="run" data-name="${escapeHtml(r.name)}">run</button>
+            <button data-act="rm" class="danger" data-name="${escapeHtml(r.name)}">rm</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+      tbody.querySelectorAll('button[data-act]').forEach(b => {
+        b.addEventListener('click', async () => {
+          const cmd = b.dataset.act === 'rm'
+            ? `cron rm ${b.dataset.name}` : `cron run ${b.dataset.name}`;
+          try { await rpc(host, { type: 'exec', command: cmd }, 5000); } catch (_) {}
+          refreshCron();
+        });
+      });
+    } catch (e) {
+      tbody.innerHTML =
+        `<tr><td colspan="7" class="small" style="color:var(--err);">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function cronAdd() {
+    const host = $('cron-device').value;
+    const name = $('cron-name').value.trim();
+    const expr = $('cron-expr').value.trim();
+    const cmd  = $('cron-cmd').value.trim();
+    if (!host || !name || !expr || !cmd) {
+      logEvent('err', { who: 'cron', body: 'name + expr + command required' }); return;
+    }
+    // Quote the expression and command so spaces survive the shell parser.
+    const line = `cron add ${name} "${expr.replace(/"/g, '\\"')}" "${cmd.replace(/"/g, '\\"')}"`;
+    try {
+      await rpc(host, { type: 'exec', command: line }, 5000);
+      $('cron-name').value = ''; $('cron-expr').value = ''; $('cron-cmd').value = '';
+      refreshCron();
+    } catch (e) {
+      logEvent('err', { who: 'cron', body: 'add failed: ' + e.message });
+    }
+  }
+
+  // ---- Routing ---------------------------------------------------------
+
+  function showTab(name) {
+    activeTab = name;
+    document.querySelectorAll('nav.tabs a').forEach(a =>
+      a.classList.toggle('active', a.dataset.tab === name));
+    document.querySelectorAll('.page').forEach(p =>
+      p.hidden = p.id !== ('page-' + name));
+    if (name === 'mine') renderMine();
+    if (name === 'map')  { renderMap(); attachMapHandlers(); }
+    if (name === 'atlas') { populateAtlasHosts(); refreshAtlas(); }
+    if (name === 'cron')  { populateCronDevices(); refreshCron(); }
   }
 
   // ---- Self-update -----------------------------------------------------
@@ -630,10 +1077,8 @@
   }
 
   $('auth-ok').addEventListener('click', () => {
-    cfg = {
-      base: $('auth-base').value.trim() || defaultBase(),
-      token: $('auth-token').value || '',
-    };
+    cfg = { base: $('auth-base').value.trim() || defaultBase(),
+            token: $('auth-token').value || '' };
     saveCfg(cfg); hideAuth(); start();
   });
   $('auth-cancel').addEventListener('click', () => hideAuth());
@@ -679,6 +1124,24 @@
   $('bulk-update-pkg').addEventListener('click', () => bulkExec('upm update', 'package update'));
   $('bulk-reboot').addEventListener('click', () => bulkExec('reboot', 'reboot'));
 
+  document.querySelectorAll('nav.tabs a').forEach(a => {
+    a.addEventListener('click', () => { location.hash = '#' + a.dataset.tab; });
+  });
+  window.addEventListener('hashchange', () =>
+    showTab((location.hash || '#devices').slice(1)));
+
+  $('atlas-refresh').addEventListener('click', refreshAtlas);
+  $('atlas-add').addEventListener('click', atlasAdd);
+  $('atlas-host').addEventListener('change', refreshAtlas);
+
+  $('cron-refresh').addEventListener('click', refreshCron);
+  $('cron-add').addEventListener('click', cronAdd);
+  $('cron-device').addEventListener('change', refreshCron);
+
+  window.addEventListener('resize', () => { if (activeTab === 'map') renderMap(); });
+
+  // Boot
+  showTab((location.hash || '#devices').slice(1));
   start();
 })();
 </script>

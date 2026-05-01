@@ -149,6 +149,20 @@ local function collectMetrics()
         for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
         metrics.inventory_used = used
     end
+    -- Surface mine app state if there's an active job, so the dashboard
+    -- can render live progress without polling exec.
+    if fs.exists("/unison/state/mine/job.json") then
+        local lib = unison and unison.lib
+        local j = lib and lib.fs and lib.fs.readJson("/unison/state/mine/job.json")
+        if type(j) == "table" then
+            metrics.mine = {
+                phase = j.phase, dug = j.dug,
+                pos = j.pos, shape = j.shape,
+                started_at = j.started_at,
+                error = j.error,
+            }
+        end
+    end
     local state = loadGpsnetState() or {}
     local mode = state.mode == "host" and "host" or "auto"
     metrics.gpsnet = { mode = mode }
