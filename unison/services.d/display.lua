@@ -14,6 +14,9 @@ return {
         if unison.kernel and unison.kernel.scheduler and disp.periodicRefreshLoop then
             unison.kernel.scheduler.spawn(disp.periodicRefreshLoop, "display-refresh", { group = "system" })
         end
+        if unison.kernel and unison.kernel.scheduler and disp.flushLoop then
+            unison.kernel.scheduler.spawn(disp.flushLoop, "display-flush", { group = "system" })
+        end
     end,
 
     main = function(cfg)

@@ -73,12 +73,17 @@ local function discoverMonitors()
     return out
 end
 
-local DEFAULT_SCALE = 0.5
+-- We default to the smallest scale CC supports for max cell count. CC
+-- rejects values below 0.5 with an error, so applyMonitorSettings tries
+-- the requested value first and falls back to 0.5 if the engine refuses.
+local DEFAULT_SCALE = 0.1
 
 local function applyMonitorSettings(entry, settings)
     settings = settings or {}
     if entry.mon.setTextScale then
-        pcall(entry.mon.setTextScale, settings.scale or DEFAULT_SCALE)
+        local target = settings.scale or DEFAULT_SCALE
+        local ok = pcall(entry.mon.setTextScale, target)
+        if not ok then pcall(entry.mon.setTextScale, 0.5) end
     end
     if entry.mon.setBackgroundColor then
         pcall(entry.mon.setBackgroundColor, settings.background or colors.black)
@@ -87,37 +92,190 @@ local function applyMonitorSettings(entry, settings)
     if entry.mon.setCursorPos then pcall(entry.mon.setCursorPos, 1, 1) end
 end
 
-local function buildMultiplex(primary, targets)
-    local m = {}
-    local failures = {}    -- target -> consecutive failure count
+----------------------------------------------------------------------
+-- Shadow buffer + monitor scaling
+--
+-- Apps target the primary terminal's coordinate system (multiplex.getSize
+-- returns primary's dimensions). Every forwarded write/blit/setCursorPos
+-- mutates BOTH the primary AND a per-cell shadow grid sized to primary.
+-- A periodic flusher paints the shadow onto each monitor by mapping
+-- monitor cells to shadow cells with nearest-neighbor scaling — so a
+-- big monitor stretches the content, a small one shrinks it, but no
+-- coordinates ever fall off-screen.
+----------------------------------------------------------------------
 
-    for _, fn in ipairs(TERM_FORWARD) do
-        m[fn] = function(...)
-            local args = { ... }
-            local stale = false
-            for _, t in ipairs(targets) do
-                if t[fn] then
-                    local ok = pcall(t[fn], table.unpack(args))
-                    if not ok then
-                        failures[t] = (failures[t] or 0) + 1
-                        if failures[t] > 5 then stale = true end
-                    else
-                        failures[t] = 0
-                    end
+local HEX = {
+    [colors.white]      = "0", [colors.orange]    = "1",
+    [colors.magenta]    = "2", [colors.lightBlue] = "3",
+    [colors.yellow]     = "4", [colors.lime]      = "5",
+    [colors.pink]       = "6", [colors.gray]      = "7",
+    [colors.lightGray]  = "8", [colors.cyan]      = "9",
+    [colors.purple]     = "a", [colors.blue]      = "b",
+    [colors.brown]      = "c", [colors.green]     = "d",
+    [colors.red]        = "e", [colors.black]     = "f",
+}
+
+local function newShadow(w, h)
+    local cells = {}
+    for y = 1, h do
+        cells[y] = {}
+        for x = 1, w do
+            cells[y][x] = { ch = " ", fg = colors.white, bg = colors.black }
+        end
+    end
+    return {
+        w = w, h = h, cells = cells,
+        cx = 1, cy = 1, fg = colors.white, bg = colors.black,
+    }
+end
+
+local function shadowSet(sh, x, y, ch, fg, bg)
+    if y < 1 or y > sh.h or x < 1 or x > sh.w then return end
+    local row = sh.cells[y]; if not row then return end
+    local cell = row[x]
+    cell.ch = ch; cell.fg = fg; cell.bg = bg
+end
+
+local function shadowWrite(sh, s)
+    s = tostring(s or "")
+    for i = 1, #s do
+        shadowSet(sh, sh.cx + i - 1, sh.cy, s:sub(i, i), sh.fg, sh.bg)
+    end
+    sh.cx = sh.cx + #s
+end
+
+local function shadowBlit(sh, text, fgs, bgs)
+    for i = 1, #text do
+        local f = tonumber(fgs:sub(i, i), 16) or 0
+        local b = tonumber(bgs:sub(i, i), 16) or 15
+        shadowSet(sh, sh.cx + i - 1, sh.cy, text:sub(i, i), 2 ^ f, 2 ^ b)
+    end
+    sh.cx = sh.cx + #text
+end
+
+local function shadowClear(sh)
+    for y = 1, sh.h do
+        for x = 1, sh.w do
+            shadowSet(sh, x, y, " ", sh.fg, sh.bg)
+        end
+    end
+end
+
+local function shadowClearLine(sh)
+    if sh.cy < 1 or sh.cy > sh.h then return end
+    for x = 1, sh.w do shadowSet(sh, x, sh.cy, " ", sh.fg, sh.bg) end
+end
+
+local function shadowScroll(sh, n)
+    n = tonumber(n) or 0
+    if n == 0 then return end
+    if n > 0 then
+        for y = 1, sh.h do
+            local src = y + n
+            if src <= sh.h then sh.cells[y] = sh.cells[src]
+            else
+                sh.cells[y] = {}
+                for x = 1, sh.w do
+                    sh.cells[y][x] = { ch = " ", fg = sh.fg, bg = sh.bg }
                 end
             end
-            -- If anything looked stale, ask the watcher to re-scan.
-            if stale then os.queueEvent("peripheral_detach", "monitor") end
+        end
+    else
+        for y = sh.h, 1, -1 do
+            local src = y + n
+            if src >= 1 then sh.cells[y] = sh.cells[src]
+            else
+                sh.cells[y] = {}
+                for x = 1, sh.w do
+                    sh.cells[y][x] = { ch = " ", fg = sh.fg, bg = sh.bg }
+                end
+            end
         end
     end
+end
+
+-- Paint shadow → monitor with nearest-neighbor scaling. One blit per row.
+local function paintMonitor(sh, mon)
+    local ok, mw, mh = pcall(mon.getSize)
+    if not ok or not mw or mw < 1 or mh < 1 then return false end
+    for my = 1, mh do
+        local sy = math.floor((my - 0.5) * sh.h / mh) + 1
+        if sy < 1 then sy = 1 elseif sy > sh.h then sy = sh.h end
+        local row = sh.cells[sy]
+        local chars, fgs, bgs = {}, {}, {}
+        for mx = 1, mw do
+            local sx = math.floor((mx - 0.5) * sh.w / mw) + 1
+            if sx < 1 then sx = 1 elseif sx > sh.w then sx = sh.w end
+            local cell = row[sx]
+            chars[#chars + 1] = cell.ch
+            fgs[#fgs + 1] = HEX[cell.fg] or "0"
+            bgs[#bgs + 1] = HEX[cell.bg] or "f"
+        end
+        pcall(mon.setCursorPos, 1, my)
+        pcall(mon.blit, table.concat(chars), table.concat(fgs), table.concat(bgs))
+    end
+    return true
+end
+
+local function buildMultiplex(primary, monitors)
+    local m = {}
+    local pw, ph = primary.getSize()
+    local shadow = newShadow(pw, ph)
+    local dirty = false
+    state.shadow = shadow
+
+    -- Cursor / colour bookkeeping on the shadow.
+    local function syncCursor()
+        local ok, x, y = pcall(primary.getCursorPos)
+        if ok then shadow.cx = x; shadow.cy = y end
+    end
+    syncCursor()
+    shadow.fg = primary.getTextColor and primary.getTextColor() or colors.white
+    shadow.bg = primary.getBackgroundColor and primary.getBackgroundColor() or colors.black
+
+    function m.write(s)
+        shadowWrite(shadow, s); pcall(primary.write, s); dirty = true
+    end
+    function m.blit(text, fgs, bgs)
+        shadowBlit(shadow, text, fgs, bgs)
+        pcall(primary.blit, text, fgs, bgs); dirty = true
+    end
+    function m.clear()
+        shadowClear(shadow); pcall(primary.clear); dirty = true
+    end
+    function m.clearLine()
+        shadowClearLine(shadow); pcall(primary.clearLine); dirty = true
+    end
+    function m.setCursorPos(x, y)
+        shadow.cx = x; shadow.cy = y
+        pcall(primary.setCursorPos, x, y)
+    end
+    function m.scroll(n)
+        shadowScroll(shadow, n); pcall(primary.scroll, n); dirty = true
+    end
+    function m.setTextColor(c)     shadow.fg = c; pcall(primary.setTextColor, c) end
+    m.setTextColour = m.setTextColor
+    function m.setBackgroundColor(c) shadow.bg = c; pcall(primary.setBackgroundColor, c) end
+    m.setBackgroundColour = m.setBackgroundColor
+    function m.setCursorBlink(b)   pcall(primary.setCursorBlink, b) end
+    function m.setPaletteColor(...)
+        pcall(primary.setPaletteColor, ...)
+        for _, mon in ipairs(monitors) do pcall(mon.setPaletteColor, ...) end
+    end
+    m.setPaletteColour = m.setPaletteColor
 
     for _, fn in ipairs(TERM_QUERY_PRIMARY) do
-        m[fn] = function(...)
-            if primary[fn] then return primary[fn](...) end
-        end
+        m[fn] = function(...) if primary[fn] then return primary[fn](...) end end
     end
-
     m.redirect = function(target) return target end
+
+    -- Public hook: flush shadow → all monitors (called by display refresh).
+    state.flushMonitors = function()
+        if not dirty and not state.forceFlush then return end
+        for _, mon in ipairs(monitors) do paintMonitor(shadow, mon) end
+        dirty = false
+        state.forceFlush = false
+    end
 
     return m
 end
@@ -125,20 +283,21 @@ end
 local function rebuild()
     local cfg = state.cfg
     local primary = term.native()
-    local targets = { primary }
+    local enabledMonitors = {}
 
     for _, mon in ipairs(state.monitors) do
         local mname = mon.name
         local s = (cfg.monitors and cfg.monitors[mname]) or {}
         if s.enabled ~= false then
             applyMonitorSettings(mon, s)
-            targets[#targets + 1] = mon.mon
+            enabledMonitors[#enabledMonitors + 1] = mon.mon
         end
     end
 
     state.primary = primary
-    state.targets = targets
-    state.multiplex = buildMultiplex(primary, targets)
+    state.targets = enabledMonitors
+    state.multiplex = buildMultiplex(primary, enabledMonitors)
+    state.forceFlush = true
 
     if not state.installed then
         term.redirect(state.multiplex)
@@ -270,6 +429,18 @@ function M.periodicRefreshLoop()
         local ok = pcall(M.refresh)
         if ok and prev ~= #state.monitors then
             log.info("display", "periodic refresh saw " .. #state.monitors .. " monitor(s)")
+        end
+    end
+end
+
+-- Monitor flush loop: paints the shadow buffer onto every attached
+-- monitor at ~10Hz, scaling content nearest-neighbor so monitors of
+-- any block-dimensions render the primary's full screen contents.
+function M.flushLoop()
+    while true do
+        sleep(0.1)
+        if state.flushMonitors then
+            pcall(state.flushMonitors)
         end
     end
 end
