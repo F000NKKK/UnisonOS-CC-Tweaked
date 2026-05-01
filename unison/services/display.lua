@@ -194,25 +194,51 @@ local function shadowScroll(sh, n)
     end
 end
 
--- Paint shadow → monitor with nearest-neighbor scaling. One blit per row.
+-- Paint shadow → monitor by CENTERED LETTERBOX. Nearest-neighbor cell
+-- scaling distorts text because characters get duplicated/dropped at
+-- non-integer ratios — "0.17.0" becomes "0.177.0" on a wider monitor.
+-- Instead we paint the primary grid at its native size, centred in the
+-- monitor with empty padding around it. Bigger monitors letterbox;
+-- smaller monitors crop. Text stays crisp.
 local function paintMonitor(sh, mon)
     local ok, mw, mh = pcall(mon.getSize)
     if not ok or not mw or mw < 1 or mh < 1 then return false end
-    for my = 1, mh do
-        local sy = math.floor((my - 0.5) * sh.h / mh) + 1
-        if sy < 1 then sy = 1 elseif sy > sh.h then sy = sh.h end
-        local row = sh.cells[sy]
-        local chars, fgs, bgs = {}, {}, {}
-        for mx = 1, mw do
-            local sx = math.floor((mx - 0.5) * sh.w / mw) + 1
-            if sx < 1 then sx = 1 elseif sx > sh.w then sx = sh.w end
-            local cell = row[sx]
-            chars[#chars + 1] = cell.ch
-            fgs[#fgs + 1] = HEX[cell.fg] or "0"
-            bgs[#bgs + 1] = HEX[cell.bg] or "f"
+
+    -- Top-left corner of primary's grid in monitor cell space.
+    local offX = math.floor((mw - sh.w) / 2)
+    local offY = math.floor((mh - sh.h) / 2)
+
+    -- Clear monitor background once per frame so the letterbox padding
+    -- isn't stale content from a previous (larger) frame.
+    pcall(mon.setBackgroundColor, colors.black)
+    pcall(mon.clear)
+
+    for sy = 1, sh.h do
+        local my = sy + offY
+        if my >= 1 and my <= mh then
+            local row = sh.cells[sy]
+
+            -- Visible source range in shadow coords: [sx0..sx1] maps to
+            -- [mx0..mx1] in monitor coords.
+            local sx0 = 1
+            local mx0 = offX + 1
+            if mx0 < 1 then sx0 = 1 - offX; mx0 = 1 end
+            local sx1 = sh.w
+            if mx0 + (sx1 - sx0) > mw then sx1 = sx0 + (mw - mx0) end
+
+            if sx1 >= sx0 then
+                local chars, fgs, bgs = {}, {}, {}
+                for sx = sx0, sx1 do
+                    local cell = row[sx]
+                    chars[#chars + 1] = cell.ch
+                    fgs[#fgs + 1] = HEX[cell.fg] or "0"
+                    bgs[#bgs + 1] = HEX[cell.bg] or "f"
+                end
+                pcall(mon.setCursorPos, mx0, my)
+                pcall(mon.blit,
+                    table.concat(chars), table.concat(fgs), table.concat(bgs))
+            end
         end
-        pcall(mon.setCursorPos, 1, my)
-        pcall(mon.blit, table.concat(chars), table.concat(fgs), table.concat(bgs))
     end
     return true
 end
@@ -269,12 +295,16 @@ local function buildMultiplex(primary, monitors)
     end
     m.redirect = function(target) return target end
 
-    -- Public hook: flush shadow → all monitors (called by display refresh).
+    -- Public hook: flush shadow → all monitors. Called periodically.
+    -- We paint EVERY tick — not conditional on `dirty` — because other
+    -- code paths (peripheral attach/detach, gps-host bootstrap, displays
+    -- shell command, manual mon.clear() from elsewhere) can wipe the
+    -- monitor's framebuffer underneath us. A blind re-paint is the
+    -- simplest correctness guarantee; the cost is one blit-per-row at
+    -- 10 Hz which CC handles fine.
     state.flushMonitors = function()
-        if not dirty and not state.forceFlush then return end
         for _, mon in ipairs(monitors) do paintMonitor(shadow, mon) end
         dirty = false
-        state.forceFlush = false
     end
 
     return m
