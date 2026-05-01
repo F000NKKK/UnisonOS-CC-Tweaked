@@ -45,6 +45,23 @@ function Store:remove(key)
     self:save()
 end
 
+-- Batched writes. Use these when set() in a hot loop would be O(N²)
+-- (each call rewrites the whole file). setNoSave only touches memory;
+-- the caller must flush() to persist. setMany updates many keys in one
+-- save. Useful for scanners / bulk-import flows.
+function Store:setNoSave(key, value)
+    self._data[key] = value
+    return value
+end
+
+function Store:setMany(t)
+    if type(t) ~= "table" then return end
+    for k, v in pairs(t) do self._data[k] = v end
+    self:save()
+end
+
+function Store:flush() self:save() end
+
 function Store:keys()
     local out = {}
     for k in pairs(self._data) do out[#out + 1] = k end

@@ -3,9 +3,9 @@
   "updated_at": "2026-04-30",
   "packages": {
     "mine": {
-      "latest": "2.2.1",
-      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.5.1", "1.5.2", "2.0.0", "2.1.0", "2.1.1", "2.1.2", "2.2.0", "2.2.1"],
-      "description": "Sector miner: 'mine 7 3 7' = end coords (8x4x8 volume), y goes UP",
+      "latest": "2.3.0",
+      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.5.1", "1.5.2", "2.0.0", "2.1.0", "2.1.1", "2.1.2", "2.2.0", "2.2.1", "2.3.0"],
+      "description": "Sector miner: 6-way (+/- xyz), end-coord args, fuel/chest auto",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
@@ -43,9 +43,9 @@
       "path": "packages/atlas"
     },
     "farm": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.1.0"],
-      "description": "Auto-harvester turtle: walks a row, harvests mature crops, replants",
+      "latest": "1.2.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0"],
+      "description": "Auto-harvester turtle (pcall busy guard, RPC markBusy)",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/farm"
@@ -59,17 +59,17 @@
       "path": "packages/autocraft"
     },
     "patrol": {
-      "latest": "1.1.0",
-      "versions": ["1.0.0", "1.1.0"],
-      "description": "Turtle route runner: record / replay / loop named patrols",
+      "latest": "1.2.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0"],
+      "description": "Turtle route runner with pcall busy guard + RPC markBusy",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/patrol"
     },
     "scanner": {
-      "latest": "1.2.2",
-      "versions": ["1.0.0", "1.1.0", "1.2.0", "1.2.1", "1.2.2"],
-      "description": "Turtle sphere scanner with progress reports and atlas sync",
+      "latest": "1.3.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0"],
+      "description": "Sphere scanner: batched persistence (no O(N²)) + ores-only filter by default",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/scanner"
