@@ -32,6 +32,13 @@ fi
 
 echo
 echo "[unison] testing /api/atlas/stats..."
-curl -s "http://localhost:9273/api/atlas/stats" || echo "(no token? try with Authorization)"
+TOKEN_FILE="${TOKEN_FILE:-/etc/unison/api.token}"
+AUTH=""
+if [ -f "$TOKEN_FILE" ]; then
+    TOKEN=$(tr -d '[:space:]' < "$TOKEN_FILE")
+    AUTH="-H 'Authorization: Bearer $TOKEN'"
+fi
+sh -c "curl -s $AUTH http://localhost:9273/api/atlas/stats" \
+    || echo "(stats endpoint failed — check service logs)"
 echo
 echo "[unison] done."
