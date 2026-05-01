@@ -48,16 +48,17 @@
   button.primary { border-color: var(--accent); color: var(--accent); }
   input[type=text], input[type=password] {
     background: var(--bg); color: var(--text); border: 1px solid var(--border);
-    padding: 4px 8px; border-radius: 4px; font: inherit;
+    padding: 6px 10px; border-radius: 4px; font: inherit;
   }
 
   main {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-rows: 1fr 1fr;
     gap: 12px;
     padding: 12px;
     height: calc(100% - 49px);
   }
+  .top { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; min-height: 0; }
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 6px; overflow: hidden;
@@ -72,9 +73,7 @@
   .panel h2 .right { display: flex; gap: 6px; }
   .panel .body { flex: 1; overflow: auto; }
 
-  table {
-    width: 100%; border-collapse: collapse; font-size: 12px;
-  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 500; font-size: 11px; }
   tr.row { cursor: pointer; }
@@ -90,21 +89,39 @@
 
   .small { font-size: 11px; color: var(--muted); }
 
-  #log { font-size: 11px; padding: 6px 10px; }
-  .log-line { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
-  .log-line.err { color: var(--err); }
-  .log-line.warn { color: var(--warn); }
-  .log-line.ok { color: var(--ok); }
-  .log-line.in { color: var(--accent); }
-
-  .actions {
-    display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
+  /* Activity panel: structured event blocks */
+  #log { padding: 6px 10px; font-size: 12px; }
+  .ev {
+    margin: 6px 0; padding: 6px 10px;
+    border-left: 2px solid var(--border); background: var(--panel2);
+    border-radius: 0 4px 4px 0;
   }
-  .actions input[type=text] { flex: 1; min-width: 160px; }
-  .actions .group {
-    display: flex; gap: 4px; align-items: center;
-    padding-left: 8px; border-left: 1px solid var(--border);
+  .ev.out { border-left-color: var(--accent); }
+  .ev.in  { border-left-color: var(--ok); }
+  .ev.err { border-left-color: var(--err); }
+  .ev .head {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 11px; color: var(--muted); margin-bottom: 2px;
+  }
+  .ev .head .who { color: var(--text); }
+  .ev .body { white-space: pre-wrap; word-break: break-word; }
+  .ev pre { margin: 2px 0 0; white-space: pre-wrap; word-break: break-word;
+            font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+
+  /* Command bar */
+  .cmdbar {
+    display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border);
+    background: var(--panel); align-items: center; flex-wrap: wrap;
+  }
+  .cmdbar .target {
+    font-size: 12px; color: var(--muted);
+    padding: 4px 10px; border: 1px dashed var(--border); border-radius: 4px;
+  }
+  .cmdbar .target b { color: var(--accent); }
+  .cmdbar input[type=text] { flex: 1; min-width: 180px; }
+  .cmdbar .quick {
+    display: flex; gap: 4px; padding-left: 8px;
+    border-left: 1px solid var(--border);
   }
 
   .auth-overlay {
@@ -146,9 +163,7 @@
     background: transparent; border-bottom: 1px solid var(--border);
     padding: 12px 16px;
   }
-  .modal-card header h2 {
-    color: var(--accent); margin: 0; font-size: 16px;
-  }
+  .modal-card header h2 { color: var(--accent); margin: 0; font-size: 16px; }
   .modal-card .body { padding: 12px 16px; overflow: auto; flex: 1; }
   .modal-card .footer {
     padding: 10px 16px; border-top: 1px solid var(--border);
@@ -159,27 +174,6 @@
   .kv .v { color: var(--text); word-break: break-all; }
   pre.json { background: var(--bg); padding: 8px; border-radius: 4px;
              font-size: 11px; overflow: auto; max-height: 200px; margin: 4px 0; }
-
-  /* CC palette indices 0-15 mapped to CSS hex (matches CC:Tweaked defaults). */
-  .cc-grid {
-    font: 14px/16px ui-monospace, Menlo, Consolas, monospace;
-    background: #111;
-    padding: 8px;
-    border-radius: 4px;
-    overflow: auto;
-    max-width: 96vw; max-height: 70vh;
-    user-select: text;
-    white-space: pre;
-    letter-spacing: 0;
-    outline: none;
-  }
-  .cc-grid:focus { box-shadow: 0 0 0 2px var(--accent); }
-  .cc-grid .row { display: block; height: 16px; white-space: nowrap; }
-  .cc-grid .cell {
-    display: inline-block; width: 9px; height: 16px; line-height: 16px;
-    vertical-align: top; text-align: center;
-  }
-  .cc-grid .cursor { outline: 1px solid #ffea7f; outline-offset: -1px; }
 </style>
 </head>
 <body>
@@ -198,41 +192,53 @@
 </header>
 
 <main>
-  <section class="panel">
-    <h2>
-      <span>Devices</span>
-      <span class="right"><button id="refresh-btn">refresh</button></span>
-    </h2>
-    <div class="actions">
-      <input id="exec-input" type="text" placeholder='shell line for selected device, e.g. "version"' />
-      <button id="ping-btn" title="send a ping message">ping</button>
-      <button id="exec-btn" title="run shell command">exec</button>
-      <button id="term-btn" class="primary" title="open interactive terminal for selected device">terminal</button>
-      <span class="group">
-        <button data-quick="version">version</button>
-        <button data-quick="upm upgrade -y">upgrade</button>
-        <button data-quick="service list">services</button>
-        <button data-quick="reboot" class="danger">reboot</button>
-      </span>
-    </div>
-    <div class="body">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th><th>Role</th><th>Name</th><th>Ver</th><th>Seen</th><th>Fuel</th><th>Inv</th>
-          </tr>
-        </thead>
-        <tbody id="devices-tbody"></tbody>
-      </table>
-    </div>
-  </section>
+  <div class="top">
+    <section class="panel">
+      <h2>
+        <span>Devices</span>
+        <span class="right"><button id="refresh-btn">refresh</button></span>
+      </h2>
+      <div class="body">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Role</th><th>Name</th><th>Ver</th><th>Seen</th><th>Fuel</th><th>Inv</th>
+            </tr>
+          </thead>
+          <tbody id="devices-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>
+        <span>Selected device</span>
+      </h2>
+      <div class="body" id="dev-detail" style="padding: 10px 14px;">
+        <span class="small">click a device row to inspect it</span>
+      </div>
+    </section>
+  </div>
 
   <section class="panel">
     <h2>
-      <span>Activity (incoming via WS, outgoing via HTTP)</span>
+      <span>Activity</span>
       <span class="right"><button id="clear-log">clear</button></span>
     </h2>
     <div class="body" id="log"></div>
+    <div class="cmdbar">
+      <span class="target">target: <b id="target-name">(none)</b></span>
+      <input id="exec-input" type="text" placeholder='shell command for selected device — Enter to run' autocomplete="off" />
+      <button id="exec-btn" class="primary">exec</button>
+      <button id="ping-btn">ping</button>
+      <span class="quick">
+        <button data-quick="version">version</button>
+        <button data-quick="service list">services</button>
+        <button data-quick="upm list">pkgs</button>
+        <button data-quick="upm upgrade -y">upgrade</button>
+        <button data-quick="reboot" class="danger">reboot</button>
+      </span>
+    </div>
   </section>
 </main>
 
@@ -241,25 +247,6 @@
     <header><h2 id="dm-title">Device</h2></header>
     <div class="body" id="dm-body"></div>
     <div class="footer" id="dm-actions"></div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="term-modal" hidden>
-  <div class="modal-card" style="width:auto; max-width:98vw;">
-    <header style="display:flex; gap:12px; align-items:center;">
-      <h2 id="tm-title">Terminal</h2>
-      <span class="small" id="tm-status">disconnected</span>
-      <span class="small" id="tm-mode">live mirror</span>
-      <button id="tm-paste" style="margin-left:auto;" title="paste clipboard into the device">paste</button>
-      <button id="tm-terminate" class="danger" title="hold Ctrl+T equivalent">terminate</button>
-      <button id="tm-close">close</button>
-    </header>
-    <div class="body" style="padding:0;">
-      <div id="tm-grid" class="cc-grid" tabindex="0"></div>
-    </div>
-    <div class="footer">
-      <span class="small">Click the grid then type. Enter / arrows / Ctrl-keys all forwarded. Esc closes.</span>
-    </div>
   </div>
 </div>
 
@@ -284,7 +271,6 @@
   const STORAGE_KEY = 'unison-console';
   const POLL_MS = 2000;
 
-  // Stable per-tab id so the bus can route replies back to us.
   const myId = sessionStorage.getItem('unison-console-id') ||
     ('console-' + Math.random().toString(36).slice(2, 10));
   sessionStorage.setItem('unison-console-id', myId);
@@ -295,8 +281,12 @@
   let ws = null;
   let wsRetry = null;
   let devices = {};
+  const cmdHistory = [];
+  let cmdHistoryIdx = -1;
 
   const $ = (id) => document.getElementById(id);
+  const escapeHtml = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   function loadCfg() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); }
@@ -327,38 +317,34 @@
       headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(opts.body);
     }
-    const url = (cfg.base || defaultBase()) + path + (path.includes('?') ? '&' : '?') + '_=' + Date.now();
-    const r = await fetch(url, { ...opts, headers });
-    if (r.status === 401) { showAuth('unauthorized — check token'); throw new Error('unauthorized'); }
-    if (!r.ok) throw new Error('http ' + r.status);
-    return r.json();
+    const r = await fetch(cfg.base + path, { ...opts, headers });
+    if (r.status === 401 || r.status === 403) {
+      showAuth('auth failed');
+      throw new Error('unauthorized');
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('json') ? r.json() : r.text();
   }
 
   // ---- WebSocket -------------------------------------------------------
 
   function wsUrl() {
-    const base = cfg && cfg.base ? cfg.base : defaultBase();
-    return base
+    return (cfg.base + '/ws')
       .replace(/^http(s)?:\/\//i, (m, s) => s ? 'wss://' : 'ws://')
-      .replace(/:9273(\/|$)/, ':9275$1')
-      .replace(/:9274(\/|$)/, ':9276$1');
+      .replace(/:9273\b/, ':9275')
+      .replace(/:9274\b/, ':9276');
   }
-
   function setWsState(state) {
     $('ws-state').textContent = state;
     $('ws-led').classList.toggle('ok', state === 'connected');
   }
-
   function connectWs() {
     if (ws) try { ws.close(); } catch (_) {}
-    setWsState('connecting…');
+    setWsState('connecting');
     let url = wsUrl();
-    try {
-      ws = new WebSocket(url);
-    } catch (e) {
-      logLine('ws connect threw: ' + e.message, 'err');
-      scheduleWsRetry(); return;
-    }
+    try { ws = new WebSocket(url); }
+    catch (e) { logEvent('err', { who: 'ws', body: 'connect threw: ' + e.message }); scheduleWsRetry(); return; }
     ws.onopen = () => {
       ws.send(JSON.stringify({
         type: 'auth', id: myId, token: (cfg && cfg.token) || '',
@@ -368,19 +354,12 @@
     ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch (_) { return; }
-      if (m.type === 'ready') { setWsState('connected'); logLine('ws ready', 'ok'); return; }
-      if (m.type === 'error') { setWsState('rejected'); logLine('ws auth: ' + m.error, 'err'); return; }
-      if (m.type === 'message' && m.envelope) {
-        if (handleInbound(m.envelope)) return;
-        const e = m.envelope;
-        const body = e.msg || {};
-        const fromId = body.from || '?';
-        const summary = JSON.stringify(body);
-        logLine(`<- ${body.type || '?'} from ${fromId}  ${summary}`, 'in');
-      }
+      if (m.type === 'ready') { setWsState('connected'); return; }
+      if (m.type === 'error') { setWsState('rejected'); logEvent('err', { who: 'ws', body: m.error }); return; }
+      if (m.type === 'message' && m.envelope) handleInbound(m.envelope);
     };
-    ws.onerror = () => { setWsState('error'); };
-    ws.onclose = () => { setWsState('disconnected'); scheduleWsRetry(); };
+    ws.onerror = () => setWsState('error');
+    ws.onclose  = () => { setWsState('disconnected'); scheduleWsRetry(); };
   }
   function scheduleWsRetry() {
     if (wsRetry) clearTimeout(wsRetry);
@@ -396,7 +375,6 @@
     if (s < 3600) return Math.floor(s/60) + 'm';
     return Math.floor(s/3600) + 'h';
   }
-
   function statusDotClass(ms) {
     if (!ms) return '';
     const age = (Date.now() - ms) / 1000;
@@ -404,24 +382,49 @@
     if (age < 120) return 'warn';
     return '';
   }
+  function isConsoleId(id) { return /^console-/i.test(id); }
+  function isStaleConsole(d) {
+    return d.role === 'console' || isConsoleId(d.id || '');
+  }
 
-  function logLine(msg, kind) {
+  // ---- Activity log ----------------------------------------------------
+
+  function logEvent(kind, opts) {
     const div = document.createElement('div');
-    div.className = 'log-line ' + (kind || '');
+    div.className = 'ev ' + kind;
     const t = new Date().toLocaleTimeString();
-    div.textContent = `[${t}] ${msg}`;
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML =
+      `<span>${t}</span>` +
+      `<span class="who">${escapeHtml(opts.who || '')}</span>` +
+      (opts.tag ? `<span>${escapeHtml(opts.tag)}</span>` : '');
+    div.appendChild(head);
+    const body = document.createElement('div');
+    if (opts.pre) {
+      const pre = document.createElement('pre');
+      pre.textContent = opts.pre;
+      body.appendChild(pre);
+    } else if (opts.body) {
+      body.textContent = opts.body;
+    }
+    div.appendChild(body);
     const log = $('log');
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
-    while (log.children.length > 1000) log.removeChild(log.firstChild);
+    while (log.children.length > 300) log.removeChild(log.firstChild);
   }
+
+  // ---- Devices ---------------------------------------------------------
 
   async function refresh() {
     try {
       devices = await api('/api/devices');
       $('conn-status').textContent = 'online';
       $('conn-status').style.color = 'var(--ok)';
-      const ids = Object.keys(devices).filter(id => id !== myId).sort();
+      const ids = Object.keys(devices)
+        .filter(id => id !== myId && !isStaleConsole({ ...(devices[id] || {}), id }))
+        .sort();
       $('device-count').textContent = ids.length + ' device' + (ids.length === 1 ? '' : 's');
       const tbody = $('devices-tbody');
       tbody.innerHTML = '';
@@ -432,18 +435,19 @@
         tr.className = 'row' + (id === selectedId ? ' selected' : '');
         tr.dataset.id = id;
         tr.innerHTML = `
-          <td><span class="status-dot ${statusDotClass(d.last_seen)}"></span>${id}</td>
-          <td>${d.role || '-'}</td>
-          <td>${d.name || '-'}</td>
-          <td>${d.version || '-'}</td>
+          <td><span class="status-dot ${statusDotClass(d.last_seen)}"></span>${escapeHtml(id)}</td>
+          <td>${escapeHtml(d.role || '-')}</td>
+          <td>${escapeHtml(d.name || '-')}</td>
+          <td>${escapeHtml(d.version || '-')}</td>
           <td>${fmtAge(d.last_seen)}</td>
           <td>${m.fuel ?? '-'}</td>
           <td>${m.inventory_used ?? '-'}</td>
         `;
         tr.addEventListener('click', () => selectDevice(id));
-        tr.addEventListener('dblclick', () => openTerminal(id));
+        tr.addEventListener('dblclick', () => openDeviceDetail(id));
         tbody.appendChild(tr);
       }
+      if (selectedId) renderSelectedDetail();
     } catch (e) {
       $('conn-status').textContent = 'offline (' + e.message + ')';
       $('conn-status').style.color = 'var(--err)';
@@ -452,249 +456,117 @@
 
   function selectDevice(id) {
     selectedId = id;
+    $('target-name').textContent = id;
     document.querySelectorAll('tr.row').forEach(tr => {
       tr.classList.toggle('selected', tr.dataset.id === id);
     });
-    logLine('selected ' + id);
+    renderSelectedDetail();
   }
 
-  // ---- Live mirror terminal -----------------------------------------
-  // Streams term frames from the device via ssh_subscribe / ssh_frame
-  // and forwards keystrokes back as ssh_input messages.
-
-  const CC_PALETTE = [
-    "#f0f0f0", "#f2b233", "#e57fd8", "#99b2f2",
-    "#dede6c", "#7fcc19", "#f2b2cc", "#4c4c4c",
-    "#999999", "#4c99b2", "#b266e5", "#3366cc",
-    "#7f664c", "#57a64e", "#cc4c4c", "#111111",
-  ];
-  function ccColor(idx) { return CC_PALETTE[(idx | 0) % 16] || "#f0f0f0"; }
-
-  let termTarget = null;
-  let termSubTimer = null;
-  let termWatchdog = null;
-  let termGotFrame = false;
-  let termDims = { w: 0, h: 0 };
-  let termCur = { x: 0, y: 0 };
-
-  function ensureGrid(w, h) {
-    if (w === termDims.w && h === termDims.h) return;
-    const grid = $('tm-grid');
-    grid.innerHTML = '';
-    for (let y = 0; y < h; y++) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      for (let x = 0; x < w; x++) {
-        const c = document.createElement('span');
-        c.className = 'cell';
-        c.textContent = ' ';
-        c.style.background = ccColor(15);
-        c.style.color = ccColor(0);
-        row.appendChild(c);
-      }
-      grid.appendChild(row);
-    }
-    termDims = { w: w, h: h };
-  }
-
-  function paintRow(y, data) {
-    const rowEl = $('tm-grid').children[y - 1];
-    if (!rowEl || !data) return;
-    const chars = data.chars || '';
-    const fg = data.fg || '';
-    const bg = data.bg || '';
-    for (let x = 0; x < termDims.w; x++) {
-      const cell = rowEl.children[x];
-      if (!cell) continue;
-      const ch = chars.charAt(x) || ' ';
-      const fi = parseInt(fg.charAt(x) || 'f', 16);
-      const bi = parseInt(bg.charAt(x) || '0', 16);
-      cell.textContent = ch === '' ? ' ' : ch;
-      cell.style.color = ccColor(isNaN(fi) ? 0 : fi);
-      cell.style.background = ccColor(isNaN(bi) ? 15 : bi);
-    }
-  }
-
-  function moveCursor(cur) {
-    if (!cur) return;
-    // clear old
-    if (termCur.y >= 1 && termCur.y <= termDims.h) {
-      const oldRow = $('tm-grid').children[termCur.y - 1];
-      if (oldRow) {
-        const oldCell = oldRow.children[termCur.x - 1];
-        if (oldCell) oldCell.classList.remove('cursor');
-      }
-    }
-    termCur = { x: cur.x, y: cur.y };
-    if (termCur.y >= 1 && termCur.y <= termDims.h) {
-      const newRow = $('tm-grid').children[termCur.y - 1];
-      if (newRow) {
-        const newCell = newRow.children[termCur.x - 1];
-        if (newCell) newCell.classList.add('cursor');
-      }
-    }
-  }
-
-  function termRender(msg) {
-    if (msg.full && msg.frame) {
-      const f = msg.frame;
-      ensureGrid(f.w, f.h);
-      for (let y = 1; y <= f.h; y++) paintRow(y, f.rows[y] || f.rows[String(y)]);
-      moveCursor(f.cursor);
+  function renderSelectedDetail() {
+    if (!selectedId || !devices[selectedId]) {
+      $('dev-detail').innerHTML = '<span class="small">click a device row to inspect it</span>';
       return;
     }
-    if (msg.diff) {
-      ensureGrid(msg.w, msg.h);
-      const rows = msg.rows || {};
-      for (const k in rows) {
-        const y = parseInt(k, 10);
-        if (!isNaN(y)) paintRow(y, rows[k]);
-      }
-      moveCursor(msg.cursor);
-      return;
-    }
-    // legacy full frame from older device
-    if (msg.frame) {
-      const f = msg.frame;
-      ensureGrid(f.w, f.h);
-      for (let y = 1; y <= f.h; y++) paintRow(y, f.rows[y] || f.rows[String(y)]);
-      moveCursor(f.cursor);
+    const d = devices[selectedId];
+    const m = d.metrics || {};
+    const pos = m.position;
+    $('dev-detail').innerHTML = `
+      <div class="kv">
+        <div class="k">ID</div>          <div class="v">${escapeHtml(selectedId)}</div>
+        <div class="k">Name</div>        <div class="v">${escapeHtml(d.name || '-')}</div>
+        <div class="k">Role</div>        <div class="v">${escapeHtml(d.role || '-')}</div>
+        <div class="k">Version</div>     <div class="v">${escapeHtml(d.version || '-')}</div>
+        <div class="k">Last seen</div>   <div class="v">${fmtAge(d.last_seen)} ago</div>
+        <div class="k">Transport</div>   <div class="v">${escapeHtml(d.transport || 'http')}</div>
+        <div class="k">Uptime</div>      <div class="v">${m.uptime ?? '-'} s</div>
+        <div class="k">Fuel</div>        <div class="v">${m.fuel ?? '-'}</div>
+        <div class="k">Inventory</div>   <div class="v">${m.inventory_used ?? '-'} / 16</div>
+        <div class="k">Position</div>    <div class="v">${pos ? `${pos.x},${pos.y},${pos.z} (${escapeHtml(m.position_source || '?')})` : '-'}</div>
+      </div>
+      <div style="margin-top: 10px;"><button id="dev-detail-more">more / actions →</button></div>
+    `;
+    const more = document.getElementById('dev-detail-more');
+    if (more) more.addEventListener('click', () => openDeviceDetail(selectedId));
+  }
+
+  // ---- Send / receive ---------------------------------------------------
+
+  async function pushMessage(deviceId, body) {
+    body = body || {};
+    body.from = body.from || myId;
+    try {
+      await api('/api/messages/' + encodeURIComponent(deviceId),
+                { method: 'POST', body });
+      return true;
+    } catch (e) {
+      logEvent('err', { who: deviceId, body: 'send failed: ' + e.message });
+      return false;
     }
   }
 
-  async function termSubscribe() {
-    if (!termTarget) return;
-    await pushMessage(termTarget, { type: 'ssh_subscribe', ttl: 30 });
-  }
-
-  function openTerminal(id) {
-    termTarget = id;
-    termGotFrame = false;
-    termDims = { w: 0, h: 0 };
-    $('tm-title').textContent = `Terminal — ${id}`;
-    $('tm-status').textContent = 'connecting…';
-    $('tm-grid').innerHTML = '';
-    // Pre-render default CC terminal (51x19) so the modal isn't 1px tall.
-    ensureGrid(51, 19);
-    $('term-modal').hidden = false;
-    termSubscribe();
-    if (termSubTimer) clearInterval(termSubTimer);
-    termSubTimer = setInterval(termSubscribe, 15000);   // renew TTL
-    if (termWatchdog) clearTimeout(termWatchdog);
-    termWatchdog = setTimeout(() => {
-      if (!termGotFrame) {
-        $('tm-status').textContent = 'no response — needs sshd ≥ 0.10.3 (run: upgrade os && reboot)';
-      }
-    }, 3000);
-    setTimeout(() => $('tm-grid').focus(), 50);
-  }
-
-  async function closeTerminal() {
-    if (termTarget) {
-      await pushMessage(termTarget, { type: 'ssh_unsubscribe' });
-    }
-    $('term-modal').hidden = true;
-    if (termSubTimer) { clearInterval(termSubTimer); termSubTimer = null; }
-    if (termWatchdog) { clearTimeout(termWatchdog); termWatchdog = null; }
-    termGotFrame = false;
-    termTarget = null;
-  }
-
-  // Map browser KeyboardEvent.key / event.keyCode to CC keys (LWJGL).
-  // CC's keys.* values match LWJGL keycodes. Common keys mapped here.
-  const KEY_MAP = {
-    'Enter':       257,  'Tab':       258,  'Backspace': 259,
-    'Delete':      261,  'ArrowRight':262,  'ArrowLeft': 263,
-    'ArrowDown':   264,  'ArrowUp':   265,  'PageUp':    266,
-    'PageDown':    267,  'Home':      268,  'End':       269,
-    'CapsLock':    280,  'Escape':    256,  'F1':        290,
-    'F2':          291,  'F3':        292,  'F4':        293,
-    'F5':          294,  'F6':        295,  'F7':        296,
-    'F8':          297,  'F9':        298,  'F10':       299,
-    'F11':         300,  'F12':       301,  ' ':         32,
-  };
-
-  async function sendTermInput(payload) {
-    if (!termTarget) return;
-    payload.type = 'ssh_input';
-    await pushMessage(termTarget, payload);
-  }
-
-  function termKeyDown(ev) {
-    if (!termTarget) return;
-    if (ev.key === 'Escape') {
-      ev.preventDefault();
-      closeTerminal();
-      return;
-    }
-    if (ev.ctrlKey && ev.key.toLowerCase() === 't') {
-      ev.preventDefault();
-      sendTermInput({ event: 'terminate' });
-      return;
-    }
-    const mapped = KEY_MAP[ev.key];
-    if (mapped) {
-      ev.preventDefault();
-      sendTermInput({ event: 'key', value: mapped, held: ev.repeat });
-      return;
-    }
-    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
-      ev.preventDefault();
-      sendTermInput({ event: 'char', value: ev.key });
-    }
-  }
-
-  function termPaste(ev) {
-    if (!termTarget) return;
-    const txt = (ev.clipboardData || window.clipboardData).getData('text');
-    if (!txt) return;
-    ev.preventDefault();
-    sendTermInput({ event: 'paste', value: txt });
+  async function execOn(id, cmd) {
+    if (!id) { logEvent('err', { who: '-', body: 'select a device first' }); return; }
+    if (!cmd) return;
+    logEvent('out', { who: '→ ' + id, tag: 'exec', body: cmd });
+    await pushMessage(id, { type: 'exec', command: cmd });
   }
 
   function handleInbound(envelope) {
     const body = envelope.msg || {};
-    if (termTarget && body.type === 'ssh_frame') {
-      termRender(body);
-      termGotFrame = true;
-      if (termWatchdog) { clearTimeout(termWatchdog); termWatchdog = null; }
-      const w = (body.frame && body.frame.w) || body.w || termDims.w;
-      const h = (body.frame && body.frame.h) || body.h || termDims.h;
-      const kind = body.full ? 'full' : (body.diff ? 'diff' : 'frame');
-      $('tm-status').textContent = 'live ' + w + '×' + h + ' (' + kind + ')';
-      return true;
+    const from = body.from || (envelope.from) || '?';
+    const t = body.type || '?';
+    if (t === 'pong') {
+      logEvent('in', { who: '← ' + from, tag: 'pong',
+        body: 'rtt ' + (body.ts ? (Date.now() - body.ts) + 'ms' : '?') });
+      return;
     }
-    return false;
+    if (t === 'exec_reply') {
+      const out = body.output || (body.err ? '[err] ' + body.err : '(no output)');
+      logEvent(body.ok === false ? 'err' : 'in', {
+        who: '← ' + from,
+        tag: body.command ? `exec_reply: ${body.command}` : 'exec_reply',
+        pre: out,
+      });
+      return;
+    }
+    if (t.endsWith('_reply')) {
+      logEvent('in', { who: '← ' + from, tag: t,
+        pre: JSON.stringify(body, null, 2) });
+      return;
+    }
+    // Unknown message — just summarise.
+    logEvent('in', { who: '← ' + from, tag: t,
+      pre: JSON.stringify(body) });
   }
+
+  // ---- Bulk ops --------------------------------------------------------
+
+  async function bulkExec(cmd, label) {
+    const ids = Object.keys(devices)
+      .filter(id => id !== myId && !isStaleConsole({ ...(devices[id] || {}), id }));
+    if (ids.length === 0) { logEvent('err', { who: '-', body: 'no devices online' }); return; }
+    if (!confirm(`Run "${cmd}" on ${ids.length} device(s)?`)) return;
+    logEvent('out', { who: 'broadcast', tag: label || cmd, body: `${cmd}  (${ids.length} target(s))` });
+    for (const id of ids) await pushMessage(id, { type: 'exec', command: cmd });
+  }
+
+  // ---- Device detail modal --------------------------------------------
 
   function openDeviceDetail(id) {
     const d = devices[id];
     if (!d) return;
-    selectedId = id;
+    selectedId = id; $('target-name').textContent = id;
     $('dm-title').textContent = `${id} — ${d.role || '?'} v${d.version || '?'}`;
-    const body = $('dm-body');
+    const dmBody = $('dm-body');
     const m = d.metrics || {};
-    body.innerHTML = `
-      <div class="kv">
-        <div class="k">Name</div>           <div class="v">${d.name || '-'}</div>
-        <div class="k">Role</div>           <div class="v">${d.role || '-'}</div>
-        <div class="k">Version</div>        <div class="v">${d.version || '-'}</div>
-        <div class="k">Last seen</div>      <div class="v">${fmtAge(d.last_seen)} ago</div>
-        <div class="k">Transport</div>      <div class="v">${d.transport || 'http'}</div>
-        <div class="k">Uptime</div>         <div class="v">${m.uptime ?? '-'} s</div>
-        <div class="k">Free memory</div>    <div class="v">${m.free_mem ?? '-'}</div>
-        <div class="k">Fuel</div>           <div class="v">${m.fuel ?? '-'}</div>
-        <div class="k">Inventory used</div> <div class="v">${m.inventory_used ?? '-'} / 16</div>
-      </div>
-      <h3 class="small" style="margin-top:12px;color:var(--muted);">Raw record</h3>
-      <pre class="json">${JSON.stringify(d, null, 2)}</pre>
+    dmBody.innerHTML = `
+      <pre class="json">${escapeHtml(JSON.stringify(d, null, 2))}</pre>
     `;
-
     const actions = $('dm-actions');
     actions.innerHTML = '';
     const buttons = [
-      { label: 'terminal', cmd: null, fn: () => { $('device-modal').hidden = true; openTerminal(id); } },
-      { label: 'ping', cmd: null, fn: () => pushMessage(id, { type: 'ping' }) },
+      { label: 'ping', fn: () => pushMessage(id, { type: 'ping', ts: Date.now() }) },
       { label: 'version', cmd: 'version' },
       { label: 'service list', cmd: 'service list' },
       { label: 'upm list', cmd: 'upm list' },
@@ -703,16 +575,15 @@
     ];
     if (d.role === 'turtle') {
       buttons.splice(2, 0,
-        { label: 'mine 32', cmd: 'mine 32' },
-        { label: 'farm 8', cmd: 'farm 8' });
+        { label: 'mine status', cmd: 'mine status' },
+        { label: 'mine start', cmd: 'mine start' });
     }
     for (const b of buttons) {
       const el = document.createElement('button');
       el.textContent = b.label;
       if (b.danger) el.className = 'danger';
       el.addEventListener('click', () => {
-        if (b.fn) b.fn();
-        else pushMessage(id, { type: 'exec', command: b.cmd });
+        if (b.fn) b.fn(); else execOn(id, b.cmd);
       });
       actions.appendChild(el);
     }
@@ -721,65 +592,28 @@
     close.style.marginLeft = 'auto';
     close.addEventListener('click', () => $('device-modal').hidden = true);
     actions.appendChild(close);
-
     $('device-modal').hidden = false;
   }
 
-  async function pushMessage(deviceId, body) {
-    body = body || {};
-    body.from = body.from || myId;
-    try {
-      const r = await api('/api/messages/' + deviceId, { method: 'POST', body });
-      logLine(`-> ${body.type || '?'} to ${deviceId}`, 'ok');
-      return r;
-    } catch (e) {
-      logLine(`send to ${deviceId} failed: ${e.message}`, 'err');
-    }
-  }
-
-  async function pingSelected() {
-    if (!selectedId) { logLine('select a device first', 'warn'); return; }
-    await pushMessage(selectedId, { type: 'ping' });
-  }
-  async function execSelected(cmdOverride) {
-    const cmd = (cmdOverride || $('exec-input').value).trim();
-    if (!selectedId) { logLine('select a device first', 'warn'); return; }
-    if (!cmd) { logLine('enter a shell command', 'warn'); return; }
-    await pushMessage(selectedId, { type: 'exec', command: cmd });
-  }
-
-  async function bulkExec(cmd, label) {
-    const ids = Object.keys(devices).filter(id => id !== myId);
-    if (ids.length === 0) { logLine('no devices online', 'warn'); return; }
-    if (!confirm(`Run "${cmd}" on ${ids.length} device(s)?`)) return;
-    logLine(`bulk: ${label || cmd} on ${ids.length} devices`, 'ok');
-    for (const id of ids) {
-      await pushMessage(id, { type: 'exec', command: cmd });
-    }
-  }
-
   // ---- Self-update -----------------------------------------------------
-  // Poll our own HTML every 30s; if the body changed, reload.
+
   let pageHash = null;
   async function checkSelfUpdate() {
     try {
-      const r = await fetch(location.href + '?_=' + Date.now(),
-                            { cache: 'no-store' });
+      const r = await fetch(location.href + '?_=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) return;
       const txt = await r.text();
       let h = 0;
-      for (let i = 0; i < txt.length; i++) {
-        h = ((h << 5) - h + txt.charCodeAt(i)) | 0;
-      }
+      for (let i = 0; i < txt.length; i++) h = ((h << 5) - h + txt.charCodeAt(i)) | 0;
       if (pageHash === null) { pageHash = h; return; }
       if (h !== pageHash) {
-        logLine('dashboard updated upstream — reloading…', 'ok');
+        logEvent('out', { who: 'console', body: 'dashboard updated upstream — reloading…' });
         setTimeout(() => location.reload(), 800);
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {}
   }
 
-  // ---- Boot ------------------------------------------------------------
+  // ---- Wiring ----------------------------------------------------------
 
   function start() {
     cfg = loadCfg();
@@ -797,9 +631,7 @@
       base: $('auth-base').value.trim() || defaultBase(),
       token: $('auth-token').value || '',
     };
-    saveCfg(cfg);
-    hideAuth();
-    start();
+    saveCfg(cfg); hideAuth(); start();
   });
   $('auth-cancel').addEventListener('click', () => hideAuth());
   $('logout-btn').addEventListener('click', () => {
@@ -810,29 +642,35 @@
   });
   $('refresh-btn').addEventListener('click', refresh);
   $('clear-log').addEventListener('click', () => $('log').innerHTML = '');
-  $('ping-btn').addEventListener('click', pingSelected);
-  $('exec-btn').addEventListener('click', () => execSelected());
+
+  $('exec-btn').addEventListener('click', () => {
+    const cmd = $('exec-input').value.trim();
+    if (cmd) {
+      cmdHistory.push(cmd); cmdHistoryIdx = cmdHistory.length;
+      $('exec-input').value = '';
+      execOn(selectedId, cmd);
+    }
+  });
   $('exec-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') execSelected();
+    if (e.key === 'Enter') { $('exec-btn').click(); return; }
+    if (e.key === 'ArrowUp' && cmdHistory.length > 0) {
+      e.preventDefault();
+      cmdHistoryIdx = Math.max(0, cmdHistoryIdx - 1);
+      $('exec-input').value = cmdHistory[cmdHistoryIdx] || '';
+    } else if (e.key === 'ArrowDown' && cmdHistory.length > 0) {
+      e.preventDefault();
+      cmdHistoryIdx = Math.min(cmdHistory.length, cmdHistoryIdx + 1);
+      $('exec-input').value = cmdHistory[cmdHistoryIdx] || '';
+    }
+  });
+  $('ping-btn').addEventListener('click', () => {
+    if (!selectedId) return;
+    pushMessage(selectedId, { type: 'ping', ts: Date.now() });
+    logEvent('out', { who: '→ ' + selectedId, tag: 'ping' });
   });
   document.querySelectorAll('button[data-quick]').forEach(b => {
-    b.addEventListener('click', () => execSelected(b.dataset.quick));
+    b.addEventListener('click', () => execOn(selectedId, b.dataset.quick));
   });
-
-  $('term-btn').addEventListener('click', () => {
-    if (!selectedId) { logLine('select a device first', 'warn'); return; }
-    openTerminal(selectedId);
-  });
-  $('tm-close').addEventListener('click', closeTerminal);
-  $('tm-terminate').addEventListener('click', () => sendTermInput({ event: 'terminate' }));
-  $('tm-paste').addEventListener('click', async () => {
-    if (!navigator.clipboard) return;
-    const t = await navigator.clipboard.readText().catch(() => '');
-    if (t) sendTermInput({ event: 'paste', value: t });
-  });
-  $('tm-grid').addEventListener('keydown', termKeyDown);
-  $('tm-grid').addEventListener('paste', termPaste);
-  $('tm-grid').addEventListener('click', () => $('tm-grid').focus());
 
   $('bulk-update-os').addEventListener('click', () => bulkExec('upm upgrade -y', 'OS upgrade'));
   $('bulk-update-pkg').addEventListener('click', () => bulkExec('upm update', 'package update'));

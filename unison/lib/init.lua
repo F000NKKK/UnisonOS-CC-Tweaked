@@ -13,6 +13,4 @@ return {
     fmt         = dofile("/unison/lib/fmt.lua"),
     gps         = dofile("/unison/lib/gps.lua"),
     scrollback  = dofile("/unison/lib/scrollback.lua"),
-    term_buffer = dofile("/unison/lib/term_buffer.lua"),
-    ssh         = dofile("/unison/lib/ssh.lua"),
 }
