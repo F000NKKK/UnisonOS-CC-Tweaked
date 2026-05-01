@@ -106,16 +106,47 @@ local function diagnose()
     print("known towers on the bus:")
     local devices, err = gpsLib.devices()
     if not devices then print("  unavailable: " .. tostring(err)); return end
-    local towers = 0
+    local towers = {}
     for _, d in ipairs(devices) do
         if d.source == "tower" or d.source == "host" then
             print(string.format("  %s  %s  %d,%d,%d  (%s)",
                 d.id, d.name or "-", d.x, d.y, d.z, d.source or "?"))
-            towers = towers + 1
+            towers[#towers + 1] = d
         end
     end
-    if towers == 0 then
+    if #towers == 0 then
         print("  (none — at least one tower needs to register on the bus)")
+        return
+    end
+
+    -- Coplanarity sanity check — if towers' Y spread is too small, the
+    -- trilateration solver is ill-conditioned and returns nil even when
+    -- all 4 towers are heard. This bites users almost every fresh setup.
+    if #towers >= 4 then
+        local xs, ys, zs = {}, {}, {}
+        for _, t in ipairs(towers) do
+            xs[#xs + 1] = t.x; ys[#ys + 1] = t.y; zs[#zs + 1] = t.z
+        end
+        local function spread(a)
+            local lo, hi = a[1], a[1]
+            for _, v in ipairs(a) do if v < lo then lo = v end; if v > hi then hi = v end end
+            return hi - lo
+        end
+        local sx, sy, sz = spread(xs), spread(ys), spread(zs)
+        print("")
+        print(string.format("tower spread: x=%d  y=%d  z=%d", sx, sy, sz))
+        if sy < 10 then
+            print("  WARN: y spread is " .. sy .. " — towers are nearly coplanar.")
+            print("  CC GPS won't lock in this configuration even if all 4 are")
+            print("  heard. Move 1-2 towers to a much different height (>30")
+            print("  blocks of y range is reliable).")
+        end
+        if sx < 10 or sz < 10 then
+            print("  WARN: small x/z spread reduces accuracy near the towers' centre.")
+        end
+    elseif #towers > 0 and #towers < 4 then
+        print("")
+        print("  WARN: only " .. #towers .. " tower(s) on bus, need 4.")
     end
 end
 
