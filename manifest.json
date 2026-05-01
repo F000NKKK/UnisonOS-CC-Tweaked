@@ -52,7 +52,8 @@
     "unison/services/display.lua": "881fa8fbc30099ce637d710446dea9f8692ab366cff37f268cbbf364a9d2ba72",
     "unison/services/gps_host.lua": "91e8db7e9b09603750258443fef6873a1e39f509b7add867c58c161fbd3c2789",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
-    "unison/services/rpcd.lua": "a78df57e925da9841f4820b81ecb64ef4daab5d17b74725648e77124e7d5001e",
+    "unison/services/rpcd.lua": "e35e1b7042322106458d157e85e5b0b5921335d6e9cae309ae1220458ac3ef92",
+    "unison/shell/commands/acl.lua": "ee35ff4c946354e6dec822e096ddf8bba5a61ede14a9ec2e93187c8a2ce498f5",
     "unison/shell/commands/apitoken.lua": "8a5a8f7eea699f27eb6bee6aa1e19268bab3c0e0156292f42c85b4c79e1459b6",
     "unison/shell/commands/cat.lua": "8070d28baaa7188af9401e78b91c7c63458b4ee130b6927081d582428349e926",
     "unison/shell/commands/cd.lua": "99056e8b9df4bec252f80fd1d8fad634f9b98809f3336067f772754d121b08a3",
@@ -210,7 +211,8 @@
       "unison/shell/commands/cat.lua",
       "unison/shell/commands/tail.lua",
       "unison/shell/commands/nano.lua",
-      "unison/shell/commands/desktop.lua"
+      "unison/shell/commands/desktop.lua",
+      "unison/shell/commands/acl.lua"
     ],
     "computer": [],
     "master": [],
@@ -218,5 +220,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.18.1"
+  "version": "0.19.0"
 }

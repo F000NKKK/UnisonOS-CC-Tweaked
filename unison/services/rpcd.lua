@@ -51,10 +51,32 @@ local function listHas(list, value)
     return false
 end
 
+-- Loads /unison/state/acl.json (per-device overrides set via the `acl`
+-- shell command) once per dispatch — cheap; cached for HOT_TTL ms so
+-- a high-throughput RPC stream doesn't beat the disk.
+local _aclCache, _aclCacheTs = nil, 0
+local ACL_CACHE_TTL_MS = 1000
+local function aclOverride()
+    local now = os.epoch and os.epoch("utc") or 0
+    if _aclCache and (now - _aclCacheTs) < ACL_CACHE_TTL_MS then return _aclCache end
+    local lib = unison and unison.lib
+    local data
+    if lib and lib.fs and fs.exists("/unison/state/acl.json") then
+        data = lib.fs.readJson("/unison/state/acl.json") or {}
+    else data = {} end
+    _aclCache, _aclCacheTs = data, now
+    return data
+end
+
 local function aclAllowed(msgType, fromId)
+    -- State-file override wins over static config so a runtime `acl set`
+    -- takes effect without a reboot or config-file edit.
+    local override = aclOverride()
     local cfg = unison and unison.config and unison.config.rpc_acl
-    if type(cfg) ~= "table" then return true end
-    local rule = cfg[msgType] or cfg["*"]
+    local rule = override[msgType] or override["*"]
+    if rule == nil and type(cfg) == "table" then
+        rule = cfg[msgType] or cfg["*"]
+    end
     if rule == nil then return true end
     if rule == true then return true end
     if rule == false then return false end
