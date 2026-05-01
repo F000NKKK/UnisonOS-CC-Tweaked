@@ -1,6 +1,6 @@
 {
   "name": "UnisonOS",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "phase": 10,
   "repo": "F000NKKK/UnisonOS-CC-Tweaked",
   "branch": "master",
@@ -47,6 +47,14 @@
       "unison/ui/buffer.lua",
       "unison/ui/wm.lua",
       "unison/ui/widgets.lua",
+      "unison/ui/desktop.lua",
+      "unison/ui/apps/files.lua",
+      "unison/ui/apps/procs.lua",
+      "unison/ui/apps/services.lua",
+      "unison/ui/apps/logs.lua",
+      "unison/ui/apps/devices.lua",
+      "unison/ui/apps/mine.lua",
+      "unison/ui/apps/gps.lua",
       "unison/services/disk_updater.lua",
       "unison/services/os_updater.lua",
       "unison/services/display.lua",
@@ -97,7 +105,8 @@
       "unison/shell/commands/ls.lua",
       "unison/shell/commands/cat.lua",
       "unison/shell/commands/tail.lua",
-      "unison/shell/commands/nano.lua"
+      "unison/shell/commands/nano.lua",
+      "unison/shell/commands/desktop.lua"
     ],
     "master": [],
     "turtle": [],
