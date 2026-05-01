@@ -49,7 +49,7 @@
     "unison/services.d/shell.lua": "2e40369c9bc8ff441df35df37b93f04e8fe9f08abfa89b1518864b9eac831aa3",
     "unison/services/crond.lua": "ceeb3273b72f0366a5b88671cda9c6d1b414c2bef7f379f4115c132fcd8270ae",
     "unison/services/disk_updater.lua": "d297c13aa42b7757e6f8e3023e80f7266cd5cd04ee8b74ac2c34ec16e7fff14f",
-    "unison/services/display.lua": "6471083599bad673bfd2c2b91d3f8563a20a8ae69433206b5f483e4d68a35723",
+    "unison/services/display.lua": "881fa8fbc30099ce637d710446dea9f8692ab366cff37f268cbbf364a9d2ba72",
     "unison/services/gps_host.lua": "91e8db7e9b09603750258443fef6873a1e39f509b7add867c58c161fbd3c2789",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
     "unison/services/rpcd.lua": "a78df57e925da9841f4820b81ecb64ef4daab5d17b74725648e77124e7d5001e",
@@ -218,5 +218,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.17.2"
+  "version": "0.17.3"
 }

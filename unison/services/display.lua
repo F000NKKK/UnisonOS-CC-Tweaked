@@ -85,11 +85,10 @@ local function applyMonitorSettings(entry, settings)
         local ok = pcall(entry.mon.setTextScale, target)
         if not ok then pcall(entry.mon.setTextScale, 0.5) end
     end
-    if entry.mon.setBackgroundColor then
-        pcall(entry.mon.setBackgroundColor, settings.background or colors.black)
-    end
-    if entry.mon.clear then pcall(entry.mon.clear) end
-    if entry.mon.setCursorPos then pcall(entry.mon.setCursorPos, 1, 1) end
+    -- We deliberately DON'T clear or setBackgroundColor here. The flush
+    -- loop owns the framebuffer and re-blits every 50 ms; clearing here
+    -- on every refresh() (which fires from peripheral events and the
+    -- periodic safety net) made the monitor blink every 10 seconds.
 end
 
 ----------------------------------------------------------------------
@@ -412,14 +411,30 @@ function M.setBackground(name, color)
 end
 
 function M.refresh()
-    state.monitors = discoverMonitors()
+    local fresh = discoverMonitors()
+    -- Detect topology change (added or removed monitor by name).
+    local prev = {}
+    for _, m in ipairs(state.monitors or {}) do prev[m.name] = true end
+    local now = {}
+    for _, m in ipairs(fresh) do now[m.name] = true end
+    local changed = false
+    for k in pairs(prev) do if not now[k] then changed = true; break end end
+    if not changed then
+        for k in pairs(now) do if not prev[k] then changed = true; break end end
+    end
+
+    state.monitors = fresh
     for _, mon in ipairs(state.monitors) do
         if not state.cfg.monitors[mon.name] then
             state.cfg.monitors[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
+            changed = true
         end
     end
-    writeState(state.cfg)
-    rebuild()
+
+    if changed then
+        writeState(state.cfg)
+        rebuild()
+    end
 end
 
 function M.watcherLoop()
