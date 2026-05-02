@@ -34,7 +34,7 @@ automatically.
 
 ## RPC message types
 
-### `mine` — sector miner + worker daemon (3.0.1)
+### `mine` — sector miner + worker daemon (3.0.3)
 
 **Direct mining (one-shot)**
 
@@ -48,56 +48,124 @@ automatically.
 
 **Worker daemon (dispatcher-driven)**
 
-Start with `mine worker` (or `run mine worker`). The daemon:
+Auto-started by the `mine-worker` system service on every turtle that
+has `mine` installed (no need to run `mine worker` by hand). The daemon:
 
-1. Announces itself to the dispatcher via `worker_register`.
-2. On `mine_assign { selection }`: parks the turtle at the selection
-   volume's top-north-west corner (via `nav.goTo` + `nav.faceAxis`),
-   then digs the volume layer by layer (X→Z→Y).
-3. On completion sends `mine_done { ok=true, selectionId }` and `worker_idle`.
-4. On error or abort sends `mine_done { ok=false, err }` and `worker_idle`.
+1. Auto-snapshots its GPS as `home.set(... by="auto")` on first start
+   if no home is set.
+2. Announces itself via `worker_register` (with `kind`, `fuel`, `coal`,
+   `position`, `home`).
+3. On `mine_assign { selection_id, volume }`: parks at the volume's
+   top-north-west corner via `nav.goTo`, faces +x, digs layer by layer.
+4. On completion sends `mine_done { selection_id, ok=true }` and
+   `worker_idle`. On failure: `mine_done { ok=false, err }` — the
+   dispatcher retries the slice up to 3 times.
 
-Auto-park uses GPS-probe facing detection (step → compare → back) and
-axis-aligned tunneling so it arrives correctly even from an arbitrary
-start position with no prior facing knowledge.
+**Slot blacklist** (3.0.3): `dumpToChest` preserves slots listed in
+`unison.config.mine.protected_slots = {2, 3}` or in the state file
+`/unison/state/mine-config.json`. FUEL_SLOT (1) is always protected.
 
-Mine 3.0.1 also writes to the atlas continuously: every dig logs an
-event (`kind = "dig" | "dig_up" | "dig_down" | "job_start" |
-"job_done" | "job_paused"`) with world coords.
+**Auto-fuel-help** (3.0.3): when the chest behind home is empty,
+`waitForRefuel` calls `lib.fuel.requestHelp()` so any turtle on the
+bus carrying coal can be courier-dispatched.
 
-### `dispatcher` — selection-to-worker orchestrator (built-in service)
+Mine writes to the atlas continuously: every dig logs an event
+(`kind = "dig" | "dig_up" | "dig_down" | "job_start" | "job_done" |
+"job_paused"`) with world coords.
+
+### `dispatcher` — parallel selection orchestrator (built-in service)
 
 Enable on one machine (`config.dispatcher = true`). The dispatcher
-manages the queue of Volume selections and the pool of idle workers.
+splits each queued selection across N idle workers along the longest
+horizontal axis and assigns each sub-volume to one turtle.
+
+**Splitting & assignment**
+
+When a selection is queued, the dispatcher:
+
+1. Counts idle, non-stale, kind-matching workers.
+2. Splits the volume into `min(N, longestAxisLength)` slices (X-major
+   if `dx ≥ dz`, else Z-major).
+3. Estimates required fuel per slice as
+   `(distToCorner + sliceVolume + corner→home) × 1.5 + 200`.
+4. Filters out workers below the per-slice fuel estimate.
+5. Sends `mine_assign` to each picked worker. Sub-selections are
+   tracked with `parent_id`; the parent moves to `done` when all
+   parts succeed, `partial` if any fail permanently.
+
+**Retry**: on `mine_done { ok=false }` the sub-selection's `retries`
+counter is bumped. Up to `MAX_RETRIES = 3` the slice is re-queued and
+the next tick picks a different worker.
 
 **Outbound (dispatcher → worker)**
 
-* `mine_assign`   — `{ selectionId, selection:{name,min,max} }`.
+* `mine_assign`   — `{ selection_id, volume:{min,max}, name, return_home }`.
                     Worker auto-parks and starts digging. Reply:
                     `mine_assign_reply { ok, err? }`.
 * `mine_abort`    — `{}`. Abort current job; worker returns home.
 
 **Inbound (worker → dispatcher)**
 
-* `worker_register` — `{ kind, fuel?, position? }` → `{ ok }`.
+* `worker_register` — `{ kind, fuel, coal?, position, home, capabilities }`.
                        Called at worker start (or on `dispatcher_announce`).
-* `worker_idle`     — `{ id }` → `{ ok }`. Worker finished or aborted.
-* `worker_busy`     — `{ id, selectionId }` → `{ ok }`. Worker started job.
-* `mine_done`       — `{ selectionId, ok, err? }` → `{ ok }`.
+* `worker_idle`     — `{ position, fuel, coal? }`. Worker finished or aborted.
+* `worker_busy`     — `{ position, fuel, coal? }`. Worker started job.
+* `mine_done`       — `{ selection_id, ok, err? }`. Triggers retry on failure.
 
 **Inbound (surveyor / shell → dispatcher)**
 
-* `selection_queue`  — `{ selection }` → `{ ok, selectionId }`.
-* `selection_cancel` — `{ selectionId }` → `{ ok }`.
-* `selection_list`   — `{}` → `{ ok, selections: [...] }`.
+* `selection_queue`  — `{ selection }` → `{ ok, id }`.
+* `selection_cancel` — `{ id }` → `{ ok }`. Aborts all sub-selections.
+* `selection_list`   — `{}` → `{ ok, selections, workers }`. Returns
+                        top-level entries with `parts_total / parts_done /
+                        parts_failed` aggregates per parent. Sub-selections
+                        are not exposed individually.
+
+**Fuel-help**
+
+* `fuel_help_request` — point-to-point picks a courier with coal+fuel,
+                         falls back to broadcast.
+* `fuel_help_clear`   — worker self-rescued; drops the help entry.
 
 **Broadcast (dispatcher → all)**
 
-* `dispatcher_announce` — fire-and-forget, no reply.
-                           Workers that miss the initial register window
-                           call `worker_register` on receipt.
+* `dispatcher_announce` — fire-and-forget every 30 s. Workers that miss
+                           the initial register window self-register
+                           on receipt.
 
-### `surveyor` — pocket selection editor (1.2.0)
+### `fuel` — universal fuel-help courier (built-in service, every turtle)
+
+Lives in `unison/services/fuel.lua` + `unison/services.d/fuel.lua`.
+Independent of `mine` / `farm` / `patrol` — every turtle role runs it.
+Backed by `lib.fuel`.
+
+**Inbound (anyone → turtle)**
+
+* `fuel_courier` — `{ target_pos, target_id?, amount }` →
+                    `fuel_courier_reply { ok, err?, dropped? }`.
+                    Turtle validates: own fuel ≥ `manhattan(self, target)
+                    × 2 + 200`, own coal ≥ `amount`. If valid: `nav.goTo`
+                    above target, `dropDown` coal items, return home.
+                    If invalid: replies with `ok=false`.
+
+**Outbound (any turtle → bus)**
+
+* `fuel_help_request`  — `{ fuel, position, amount?, reason? }` →
+                          `fuel_reply { ok }`. Broadcast when stranded.
+                          Dispatcher (or any peer's fuel service) picks
+                          the closest courier.
+* `fuel_help_clear`    — `{}` → `fuel_reply { ok }`. Cancel a previous
+                          request after self-rescue.
+
+**Heartbeat fields used by the dispatcher's courier picker**
+
+```json
+{ "metrics": { "coal": 32, "fuel": 1234, "position": {...}, "home": {...} } }
+```
+
+`metrics.coal` is reported by **every** turtle (read by `lib.fuel.coalCount`).
+
+### `surveyor` — pocket selection editor (1.3.0)
 
 A standalone phone-form-factor app (26×20 cells, portrait).
 Does not expose RPC handlers; sends `selection_queue` / `selection_cancel`
@@ -124,8 +192,13 @@ in range or HTTP-GPS via the bus.
 **Dispatcher sync**
 
 Every 5 s surveyor calls `selection_list` from the dispatcher and merges
-the returned states back into local storage (queued / in_progress / done).
-`dispatcher_announce` triggers an immediate sync nudge.
+the returned states back into local storage (queued / in_progress / done /
+partial). `dispatcher_announce` triggers an immediate sync nudge.
+
+**Progress display (1.3.0)**: when the dispatcher splits a selection,
+the surveyor LIST screen shows `[in_progress 2/4]` (parts_done /
+parts_total) and the DETAIL screen adds a `parts: N/M done (K failed)`
+line in yellow.
 
 ### `scanner` — sphere scanner (1.4.0)
 
@@ -286,6 +359,32 @@ nav.goTo({ x=100, y=64, z=-200 }, {
 
 `nav.goTo` uses a cached facing value (updated by `nav.facing` and
 every `turnLeft` / `turnRight`) so repeated calls don't re-probe GPS.
+
+### `lib.fuel`
+
+Universal fuel-help client + helpers. Available on every device but
+most useful on turtles (the only ones with `turtle.getFuelLevel()`).
+
+```lua
+local fuel = require "unison.lib.fuel"
+
+fuel.coalCount()                  -- total fuel items in inventory
+fuel.firstFuelSlot()              -- slot index of first fuel item or nil
+
+fuel.requestHelp({                -- broadcast fuel_help_request
+    position = {x,y,z},           -- optional override
+    amount   = 32,                -- optional, hint for couriers
+    reason   = "shell",           -- optional, free-form
+})
+
+fuel.clearHelp()                  -- cancel a previous request
+
+-- Manual courier delivery (used by services/fuel.lua):
+local ok, dropped = fuel.deliver(targetPos, amount)
+```
+
+`fuel.FUEL_NAMES` lists item names treated as fuel (coal, charcoal,
+coal_block).
 
 ### `lib.discovery`
 
@@ -500,32 +599,56 @@ rpc_acl = {
 }
 ```
 
-## End-to-end workflow: surveyor → dispatcher → mine worker
+## End-to-end workflow: surveyor → dispatcher → N mine workers
 
 ```
-Pocket PC                Computer (dispatcher)          Turtle (mine worker)
----------                ---------------------          -------------------
+Pocket PC               Computer (dispatcher)        N × Turtle (mine worker)
+---------               ---------------------        -----------------------
 run surveyor
-  set P1 (GPS here)
-  set P2 (GPS here)
+  set P1, P2
   expand u 10
   [Queue]
-    ──── selection_queue ────►
-                              picks nearest idle worker
-                              ◄─── mine_assign ──────────
-                                                         nav.goTo(corner)
-                                                         nav.faceAxis("+x")
-                                                         startJob()
-                                                           dig layer by layer
-                                                           logEvent() per dig
-                              ◄─── mine_done ────────────
-                              marks selection done
+   ─── selection_queue ──►
+                          counts N idle workers
+                          splits volume into N slices
+                          (longest of X/Z axis)
+                          filters by per-slice fuel
+                          ─── mine_assign sub:1 ───► turtle A
+                          ─── mine_assign sub:2 ───► turtle B
+                          ─── mine_assign sub:N ───► turtle …
+                                                      nav.goTo(corner)
+                                                      nav.faceAxis("+x")
+                                                      dig sector
+                          ◄─── mine_done sub:1 ───── turtle A
+                                                      (retry on failure ≤3)
+                          ◄─── mine_done sub:N ───── turtle …
+                          parent.parts_done == N → done
+
   (5s sync tick)
-    ◄─── selection_list ──────
-  shows "done"
+   ◄── selection_list ────  [done] / [partial K failed]
+```
+
+If a turtle runs out of coal in its chest (mine 3.0.3):
+
+```
+Stranded turtle X         Computer (dispatcher)      Idle turtle Y
+-----------------         ---------------------      -------------
+waitForRefuel:
+  pullCoalFromChest → 0
+  lib.fuel.requestHelp()
+   ─── fuel_help_request ──►
+                            scan workers w/ coal+fuel
+                            ─── fuel_courier ──────► turtle Y
+                                                      nav.goTo(above X)
+                                                      dropDown coal
+                                                      return home
+  pullCoalFromChest → 64
+  refuel → resume
+   ─── fuel_help_clear ────►
 ```
 
 No configuration of device IDs is required. The dispatcher is discovered
 via `dispatcher_announce` broadcast. Worker capabilities (kind, fuel,
-home) are derived from the heartbeat. The pocket app never needs to know
-which turtle will handle the job.
+coal, home) are derived from the heartbeat. The pocket app never needs
+to know which turtle will handle the job, and any turtle (any role) can
+serve as a fuel courier.

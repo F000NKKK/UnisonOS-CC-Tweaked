@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.27.0)
+## Status (current: 0.29.0)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -26,6 +26,8 @@ events, A* pathfinding) so the cluster behaves as one machine.
 | 14    | GDI graphics layer + stdio I/O unification                  | done   |
 | 15    | Home points, selection volumes, surveyor pocket app         | done   |
 | 16    | Dispatcher service + mine worker daemon + auto-park         | done   |
+| 17    | Parallel sector mining (split volume across N workers)      | done   |
+| 18    | Universal fuel-help courier protocol (any turtle)           | done   |
 
 ## Quick install
 
@@ -105,6 +107,8 @@ config; rpcd merges the two).
 | `desktop`     | Launch the pixel-chromed TUI desktop environment          |
 | `home`        | Manage home point: `show / here / set X Y Z [F] [label] / label / clear` |
 | `select`      | WorldEdit-style selection: `list/new/use/show/p1/p2/expand/contract/shift/slice/queue/cancel/rm` |
+| `kind`        | Get / set this turtle's worker kind (`mining / farming / any / clear`) |
+| `fuel`        | Inspect fuel + coal, broadcast fuel-help, manual courier deliver |
 | `apitoken`    | `set/show/clear` the VPS API token                        |
 | `acl`         | Per-device RPC firewall: `list/set/clear/reset`           |
 | `upm`         | Package manager (see below)                               |
@@ -236,8 +240,8 @@ Default registry (`apps/registry.json`):
 
 | Package     | Latest  | Notes                                               |
 |-------------|---------|-----------------------------------------------------|
-| `mine`      | 3.0.1   | Sector miner + worker daemon. `mine <xEnd> <yEnd> <zEnd>` digs a signed volume; `mine worker` subscribes to the dispatcher, auto-parks to the volume corner, digs, returns home. GPS-anchored, fuel guard, smart resume, A* goHome, atlas event streaming. |
-| `surveyor`  | 1.2.0   | Pocket-friendly 3D selection editor (26×20 portrait). Draw volume P1/P2 via GPS-here or manual coords, expand/contract/shift/slice, then queue to the dispatcher. Auto-syncs queued/in-progress/done state from the dispatcher every 5 s. |
+| `mine`      | 3.0.3   | Sector miner + worker daemon. Auto-home on first start, slot blacklist, fuel-help broadcast when stranded. `mine worker` subscribes to the dispatcher, auto-parks via `nav.goTo`, digs, returns home. (`mine-worker` service starts this automatically on every turtle.) |
+| `surveyor`  | 1.3.0   | Pocket selection editor (26×20 portrait). Now shows per-sector progress `[in_progress 2/4]` for parallel-mining jobs. Auto-syncs from the dispatcher every 5 s. |
 | `scanner`   | 1.4.0   | Sphere scanner: streams every block to the server-side atlas. |
 | `farm`      | 1.3.0   | Auto-harvester: walks a row, harvests crops, replants. lib.turtle-based. |
 | `patrol`    | 1.3.0   | Route runner with record/replay/loop. lib.turtle-based. |
@@ -307,30 +311,77 @@ Then `service restart dispatcher` (or reboot). The dispatcher:
 
 1. Watches the selection queue (via `selection_queue` RPC).
 2. Discovers idle `mine worker` turtles via their heartbeat (kind, fuel,
-   position, home, busy flag).
-3. Assigns the best-matching idle worker to each queued selection via
-   `mine_assign`.
-4. Broadcasts `dispatcher_announce` every 30 s so workers that started
-   before the dispatcher was up can self-register without config.
+   coal, position, home, busy flag).
+3. **Splits each selection across N idle workers** along the longest
+   horizontal axis — N turtles mine in parallel. Each gets `mine_assign`
+   with its own sub-volume.
+4. Filters workers by **estimated fuel cost** for their slice (manhattan
+   to corner + slice volume + return-home, with a ×1.5 safety multiplier
+   plus a 200-fuel floor). Underfuelled workers are skipped this tick.
+5. **Retries failed sub-selections** up to 3 times with a different
+   worker. Permanent failure marks the parent `partial`.
+6. Broadcasts `dispatcher_announce` every 30 s so workers self-register
+   without config.
 
 Workers register with the dispatcher automatically on `dispatcher_announce`
-or at daemon start if `config.dispatcher_id` is set (or discovered via
-broadcast). No manual ID wiring required.
+or at daemon start. No manual ID wiring required.
+
+### Auto-start, kind, and home on turtles
+
+The OS ships three pieces to make this seamless:
+
+* **`mine-worker` service** — auto-starts `mine worker` on every turtle
+  that has `mine` installed. No need to run `mine worker` by hand.
+* **`kind` shell command** — sets the turtle's kind tag persistently
+  (`/unison/state/worker.json`):
+  ```
+  kind mining     # or "farming", "any"
+  kind clear
+  ```
+* **Auto-home** — the worker daemon snapshots GPS at first start as
+  `set_by="auto"` so dispatcher routing works without manual setup.
+  `home here` on the turtle promotes it to an explicit (sticky) home.
 
 ### End-to-end workflow
 
 1. **Mark volume** — open `surveyor` on a pocket computer, set P1/P2
    (GPS-here or manual), adjust with expand/slice, tap **Queue**.
-2. **Dispatcher assigns** — within one tick (≤5 s) the dispatcher picks the
-   nearest idle turtle that has enough fuel and a home point set, sends
-   `mine_assign { selection }`.
-3. **Turtle parks and mines** — `mine worker` receives the assignment, calls
-   `nav.goTo(corner)` to auto-park at the volume's top-north-west corner,
-   aligns facing, then digs the volume layer by layer (X→Z→Y). Atlas events
-   stream in real time.
-4. **Done** — turtle sends `mine_done { ok=true }`, returns home via A*, and
-   becomes idle again. The dispatcher marks the selection `done` and picks up
-   the next job.
+2. **Dispatcher splits + assigns** — within ≤5 s the dispatcher counts
+   N idle workers with enough fuel, splits the volume into N sectors,
+   and sends `mine_assign` to each turtle in parallel. Surveyor shows
+   `[in_progress 0/N]`.
+3. **Each turtle parks and mines** — `mine worker` calls `nav.goTo` to
+   auto-park at its sector's corner, aligns facing, digs layer by layer.
+4. **Done** — each turtle reports `mine_done { ok=true }` and becomes
+   idle. Surveyor counter advances `[in_progress N/N]` → `[done]`.
+   Failed sectors are retried automatically (up to 3 attempts each).
+
+### Universal fuel-help courier
+
+Any turtle (mining, farming, patrol, scanner, or plain shell) can both
+**request** fuel-help when stranded and **respond** as a courier. The
+fuel-bus service runs on every turtle by default:
+
+```
+[turtle-3 /]$ fuel               # show local fuel + coal in inventory
+fuel: 1234
+coal in inventory: 64 items
+
+[turtle-3 /]$ fuel help          # broadcast fuel_help_request
+fuel_help_request broadcast.
+
+[computer-0 /]$ fuel deliver 100 64 -200   # manual courier dispatch
+fuel_courier broadcast → (100,64,-200). First idle turtle with coal will deliver.
+```
+
+When the dispatcher sees a `fuel_help_request`, it picks any idle turtle
+with ≥16 coal and enough fuel for the round trip and sends a
+point-to-point `fuel_courier`. If none qualifies, it broadcasts so any
+turtle on the bus can self-elect. The courier flies above the target
+(via `nav.goTo`), `dropDown`s the coal, and returns home.
+
+`mine`'s `waitForRefuel` automatically calls `lib.fuel.requestHelp()`
+when its chest is empty — no manual intervention needed.
 
 ## Server-side world atlas
 
@@ -404,7 +455,9 @@ Built-in units:
 | `rpcd`          | HTTP/WebSocket bus client + ACL gate + busy-defer for OS updates. |
 | `gps-host`      | Auto-host GPS coordinates on stationary PCs; reads `gps-host.json`. |
 | `crond`         | Scheduled tasks (cron-expr `*/5 * * * *` OR `every_seconds`). |
-| `dispatcher`    | Selection dispatcher: matches queued volumes to idle mine workers. Enabled only when `config.dispatcher = true`. |
+| `dispatcher`    | Selection dispatcher: splits queued volumes across N idle workers in parallel. Enabled only when `config.dispatcher = true`. |
+| `mine-worker`   | Auto-starts `mine worker` on any turtle that has `mine` installed. |
+| `fuel`          | Universal fuel-bus courier (any turtle): subscribes to `fuel_courier` RPC and ferries coal to stranded peers. |
 | `shell`         | Interactive shell.                                          |
 
 `service list / status / start / stop / restart` operate on these.
@@ -446,8 +499,8 @@ device shows up in `devices` and is reachable by its `os.getComputerID()`:
 ```
 [mc-pc /]$ devices
 ID           ROLE       VER     SEEN  NAME
-0            computer   0.27.0  2s    computer-0
-3            turtle     0.27.0  1s    turtle-3
+0            computer   0.29.0  2s    computer-0
+3            turtle     0.29.0  1s    turtle-3
 ```
 
 Send a JSON message:
@@ -489,8 +542,9 @@ list. Recognised permissions:
 
 UniAPI table (`unison.lib.*`) is unconditional: `fs / http / json / semver
 / path / kvstore / canvas / cli / app / fmt / gps / scrollback / turtle /
-atlas / home / selection / nav / discovery / stdio / gdi`. The TUI framework
-(`unison.ui.{buffer,wm,widgets}`) is also unconditional but lazy-loaded.
+atlas / home / selection / nav / discovery / fuel / stdio / gdi`. The TUI
+framework (`unison.ui.{buffer,wm,widgets}`) is also unconditional but
+lazy-loaded.
 
 `unison.process.markBusy(name) / clearBusy(token)` lets long-running jobs
 declare themselves so the OS-updater defers reboots until they finish.
@@ -559,6 +613,7 @@ unison/
     selection.lua        Volume + Selection AABB + state machine
     nav.lua              GPS-probe facing + axis-aligned goTo + dig tunneling
     discovery.lua        broadcast announce/lookup for service discovery
+    fuel.lua             universal fuel-help (request/clear/coalCount/deliver)
     gdi/                 GDI graphics: context, shapes, text, bitmap, blit
   crypto/                sha256, hmac
   net/                   transport, protocol, auth, enroll, router, netd
@@ -566,19 +621,22 @@ unison/
   rpc/                   HTTP+WS bus client
   services/
     display.lua          monitor shadow-buffer service
-    dispatcher.lua       selection-to-worker dispatcher
+    dispatcher.lua       parallel selection-splitter + worker dispatcher
+    fuel.lua             universal fuel-bus courier (every turtle)
     rpcd.lua             HTTP/WS RPC daemon
     ...
-  services.d/            declarative service unit files (incl. dispatcher.lua)
+  services.d/            declarative service unit files (dispatcher, fuel, mine-worker)
   cron.d/                cron unit drop directory (initially empty)
   ui/                    TUI buffer / window manager / widgets / desktop / apps
   shell/
     shell.lua            REPL
-    commands/            built-in commands (incl. home.lua, select.lua)
+    commands/            built-in commands (incl. home, select, kind, fuel)
   state/
     home.json            home point (written by `home` command / lib.home)
+    worker.json          kind override (written by `kind` command)
+    mine-config.json     mine slot blacklist
     selections/          saved selection JSON files
-    dispatcher.json      dispatcher queue + assignment state
+    dispatcher.json      dispatcher queue + assignment + fuel-help state
     discovery.json       service discovery cache
 tools/
   build-manifest.py      OS hash generator (run before commit)
