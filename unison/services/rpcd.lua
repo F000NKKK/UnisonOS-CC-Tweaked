@@ -119,14 +119,20 @@ local function heartbeatLoop()
     end
 end
 
--- Wraps client.send so messages go through WS when available.
+-- Wraps client.send so messages go through WS when available. Falls
+-- back to client.httpSend (which wireClientApi sets up as an alias for
+-- the original HTTP `send`). NOT `client.send` — that's now this very
+-- wrapper, so calling it would recurse until the stack blows. The bug
+-- ate every reply when WS was either unavailable or wsSend returned
+-- false (so dashboard exec/cron/log queries timed out even though the
+-- handler ran fine on the node).
 local function wsAwareSend(target, msg)
     if activeWs then
         local ok = client.wsSend(activeWs, target, msg)
         if ok then return { ok = true } end
         -- WS send failed; fall through to HTTP.
     end
-    return client.send(target, msg)
+    return client.httpSend(target, msg)
 end
 
 local function wsLoop()
