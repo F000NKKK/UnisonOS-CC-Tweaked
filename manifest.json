@@ -35,7 +35,7 @@
     "unison/lib/gps.lua": "b8458f3ed71c0ca18f145f113978d678389c30cb612a2c4524735712ac66cb75",
     "unison/lib/home.lua": "c8f8b441fc68c16ca40c4ffa54a2e09462bb8d539ae250396d14691ac434534d",
     "unison/lib/http.lua": "145e3f20245ad3fb862863c382414bdd904648d8e55cebd8e48fc8c94e01804d",
-    "unison/lib/init.lua": "51c5ce585b4a92dd8ddbce9598eff6f36a254257978a80213f30d84b6848a468",
+    "unison/lib/init.lua": "d4fdaa37342cb2090e8909900e401708b2a02e7171f3537cdd75a96619e9021e",
     "unison/lib/json.lua": "8334e5acde97e4c6e5c64d6ac34d038814c240092f19d998c869f020ec514617",
     "unison/lib/kvstore.lua": "e93d62687cb57300f1deacd0a4677ba7ad2ac9f8db0068c087d737cf3af51fc5",
     "unison/lib/nav.lua": "280bf4a3b51969233f37926c5e6a39ef4e16d599c31032be64160cadb76630ed",

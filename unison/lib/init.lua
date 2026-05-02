@@ -21,6 +21,7 @@ return {
     selection   = dofile("/unison/lib/selection.lua"),
     nav         = dofile("/unison/lib/nav.lua"),
     discovery   = dofile("/unison/lib/discovery.lua"),
+    fuel        = dofile("/unison/lib/fuel.lua"),
     stdio       = dofile("/unison/lib/stdio.lua"),
     gdi         = dofile("/unison/lib/gdi/init.lua"),
 }
