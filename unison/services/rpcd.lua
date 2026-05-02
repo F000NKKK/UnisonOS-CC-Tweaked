@@ -2,20 +2,32 @@
 -- real-time message delivery; falls back to HTTP polling if the WS
 -- handshake fails. Heartbeats and outbound sends use the same transport
 -- when WS is up, otherwise plain HTTP.
+--
+-- Heavy lifting lives in:
+--   * /unison/lib/rpcd/acl.lua      — per-message-type firewall
+--   * /unison/lib/rpcd/metrics.lua  — heartbeat snapshot builder
+-- This file is the orchestrator: handler registry, dispatch, the four
+-- worker loops (ws/poll/heartbeat) and the built-in handlers (ping,
+-- redstone_set, exec).
 
-local log = dofile("/unison/kernel/log.lua")
-local client = dofile("/unison/rpc/client.lua")
+local log     = dofile("/unison/kernel/log.lua")
+local client  = dofile("/unison/rpc/client.lua")
+local Acl     = dofile("/unison/lib/rpcd/acl.lua")
+local Metrics = dofile("/unison/lib/rpcd/metrics.lua")
 
 local M = {}
 
 local handlers = {}
-local POLL_INTERVAL = 3
-local HEARTBEAT_INTERVAL = 20
-local WS_RECONNECT_SEC = 5
-local GPS_STATE_FILE = "/unison/state/gpsnet.lua"
-
-local activeWs = nil
 local handlerSeq = 0
+local activeWs = nil
+
+local POLL_INTERVAL      = 3
+local HEARTBEAT_INTERVAL = 20
+local WS_RECONNECT_SEC   = 5
+
+----------------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------------
 
 local function senderId(env, msg)
     return tostring(
@@ -26,91 +38,14 @@ local function senderId(env, msg)
     )
 end
 
-local function iRound(n)
-    n = tonumber(n) or 0
-    if n >= 0 then return math.floor(n + 0.5) end
-    return math.ceil(n - 0.5)
-end
-
-local function loadGpsnetState()
-    if not fs.exists(GPS_STATE_FILE) then return nil end
-    local fn = loadfile(GPS_STATE_FILE)
-    if not fn then return nil end
-    local ok, t = pcall(fn)
-    if not ok or type(t) ~= "table" then return nil end
-    return t
-end
-
-local function listHas(list, value)
-    if type(list) ~= "table" then return false end
-    local s = tostring(value or "")
-    for _, v in ipairs(list) do
-        local x = tostring(v)
-        if x == "*" or x == s then return true end
-    end
-    return false
-end
-
--- Loads /unison/state/acl.json (per-device overrides set via the `acl`
--- shell command) once per dispatch — cheap; cached for HOT_TTL ms so
--- a high-throughput RPC stream doesn't beat the disk.
-local _aclCache, _aclCacheTs = nil, 0
-local ACL_CACHE_TTL_MS = 1000
-local function aclOverride()
-    local now = os.epoch and os.epoch("utc") or 0
-    if _aclCache and (now - _aclCacheTs) < ACL_CACHE_TTL_MS then return _aclCache end
-    local lib = unison and unison.lib
-    local data
-    if lib and lib.fs and fs.exists("/unison/state/acl.json") then
-        data = lib.fs.readJson("/unison/state/acl.json") or {}
-    else data = {} end
-    _aclCache, _aclCacheTs = data, now
-    return data
-end
-
-local function aclAllowed(msgType, fromId)
-    -- State-file override wins over static config so a runtime `acl set`
-    -- takes effect without a reboot or config-file edit.
-    local override = aclOverride()
-    local cfg = unison and unison.config and unison.config.rpc_acl
-    local rule = override[msgType] or override["*"]
-    if rule == nil and type(cfg) == "table" then
-        rule = cfg[msgType] or cfg["*"]
-    end
-    if rule == nil then return true end
-    if rule == true then return true end
-    if rule == false then return false end
-    local from = tostring(fromId or "")
-    if type(rule) == "string" then
-        return rule == "*" or rule == from
-    end
-    if type(rule) == "table" then
-        if listHas(rule.deny, from) then return false end
-        if rule.allow ~= nil then return listHas(rule.allow, from) end
-        if #rule > 0 then return listHas(rule, from) end
-        if rule.default ~= nil then return not not rule.default end
-    end
-    return true
-end
-
 local function runHandler(fn, msg, envelope)
     local ok, err = pcall(fn, msg, envelope)
     if not ok then log.warn("rpcd", "handler error: " .. tostring(err)) end
 end
 
-local function denyReplyType(msgType)
-    if msgType == "exec" then return "exec_reply" end
-    if msgType == "pilot" then return "pilot_reply" end
-    if msgType == "craft_order" or msgType == "recipe_list" or msgType == "recipe_add" then
-        return "craft_reply"
-    end
-    if msgType:match("^mine_") then return "mine_reply" end
-    if msgType:match("^farm_") then return "farm_reply" end
-    if msgType:match("^scanner_") then return "scanner_reply" end
-    if msgType:match("^storage_") then return "storage_reply" end
-    if msgType:match("^atlas_") then return "atlas_reply" end
-    return nil
-end
+----------------------------------------------------------------------
+-- Subscription registry
+----------------------------------------------------------------------
 
 function M.on(msgType, fn)
     handlers[msgType] = handlers[msgType] or {}
@@ -121,15 +56,13 @@ local function dispatch(envelope)
     local msg = envelope.msg or {}
     local msgType = tostring(msg.type or "*")
     local from = senderId(envelope, msg)
-    if not aclAllowed(msgType, from) then
-        log.warn("rpcd", "acl denied type=" .. tostring(msgType) .. " from=" .. from)
-        local replyType = denyReplyType(msgType)
+
+    if not Acl.allowed(msgType, from) then
+        log.warn("rpcd", "acl denied type=" .. msgType .. " from=" .. from)
+        local replyType = Acl.replyTypeFor(msgType)
         if replyType and unison and unison.rpc and unison.rpc.reply then
-            unison.rpc.reply(envelope, {
-                type = replyType,
-                ok = false,
-                err = "acl denied",
-            })
+            unison.rpc.reply(envelope,
+                { type = replyType, ok = false, err = "acl denied" })
         end
         return
     end
@@ -139,108 +72,25 @@ local function dispatch(envelope)
         log.debug("rpcd", "no handler for type=" .. tostring(msgType))
         return
     end
+
+    -- Each handler runs in its own scheduler coroutine so a slow one
+    -- can't block the dispatch path.
     local sched = unison and unison.kernel and unison.kernel.scheduler
     for _, fn in ipairs(list) do
         if sched and sched.spawn then
             handlerSeq = handlerSeq + 1
-            local workerName = string.format("rpc-%s-%d", tostring(msgType), handlerSeq)
-            sched.spawn(function() runHandler(fn, msg, envelope) end, workerName, {
-                priority = -2, group = "system",
-            })
+            local workerName = string.format("rpc-%s-%d", msgType, handlerSeq)
+            sched.spawn(function() runHandler(fn, msg, envelope) end,
+                workerName, { priority = -2, group = "system" })
         else
             runHandler(fn, msg, envelope)
         end
     end
 end
 
-local function collectMetrics()
-    local metrics = {
-        uptime = math.floor((os.epoch("utc") - (UNISON.boot_time or 0)) / 1000),
-        role = unison and unison.role or nil,
-    }
-    metrics.capabilities = {
-        rpc = true,
-        turtle = turtle and true or false,
-        gps = gps and true or false,
-        modem = peripheral and peripheral.find and (peripheral.find("modem") ~= nil) or false,
-        monitor = peripheral and peripheral.find and (peripheral.find("monitor") ~= nil) or false,
-    }
-    if turtle then
-        metrics.fuel = turtle.getFuelLevel()
-        local used = 0
-        for i = 1, 16 do if turtle.getItemCount(i) > 0 then used = used + 1 end end
-        metrics.inventory_used = used
-    end
-    -- Redstone IO snapshot (analog 0..15 per side). Lets the dashboard
-    -- show Create stress gauges (Stress Gauge → comparator → side) and
-    -- offer remote redstone-output controls.
-    if redstone and redstone.getAnalogInput then
-        local rs = { inputs = {}, outputs = {} }
-        for _, side in ipairs({ "front", "back", "left", "right", "top", "bottom" }) do
-            local oki, vi = pcall(redstone.getAnalogInput, side)
-            if oki then rs.inputs[side] = vi end
-            local oko, vo = pcall(redstone.getAnalogOutput, side)
-            if oko then rs.outputs[side] = vo end
-        end
-        metrics.redstone = rs
-    end
-    -- Surface mine app state if there's an active job, so the dashboard
-    -- can render live progress without polling exec.
-    if fs.exists("/unison/state/mine/job.json") then
-        local lib = unison and unison.lib
-        local j = lib and lib.fs and lib.fs.readJson("/unison/state/mine/job.json")
-        if type(j) == "table" then
-            metrics.mine = {
-                phase = j.phase, dug = j.dug,
-                pos = j.pos, shape = j.shape,
-                started_at = j.started_at,
-                error = j.error,
-            }
-        end
-    end
-    local state = loadGpsnetState() or {}
-    local mode = state.mode == "host" and "host" or "auto"
-    metrics.gpsnet = { mode = mode }
-    metrics.capabilities.gps_http = true
-
-    local hosted = mode == "host" and state.host
-    if hosted and hosted.x and hosted.y and hosted.z then
-        metrics.position = {
-            x = iRound(hosted.x),
-            y = iRound(hosted.y),
-            z = iRound(hosted.z),
-        }
-        metrics.position_source = "host"
-        metrics.gpsnet.host = true
-        metrics.capabilities.gps_http_host = true
-    else
-        -- Use unison.lib.gps so we share its no-fix cache and don't block
-        -- every heartbeat for a full GPS timeout when there are no towers.
-        local lib = unison and unison.lib
-        local gotFix = false
-        if lib and lib.gps then
-            local x, y, z, src = lib.gps.locate("self", { timeout = 0.5 })
-            if x and src == "gps" then
-                metrics.position = { x = iRound(x), y = iRound(y), z = iRound(z) }
-                metrics.position_source = "gps"
-                gotFix = true
-            end
-        end
-        -- Tower fallback: a host configured via gps-tower has its coords
-        -- saved locally even though it can't triangulate itself. Pick them
-        -- up so the dashboard sees towers without an explicit gpsnet host.
-        if not gotFix and lib and lib.fs and fs.exists("/unison/state/gps-host.json") then
-            local saved = lib.fs.readJson("/unison/state/gps-host.json")
-            if type(saved) == "table" and saved.x and saved.y and saved.z then
-                metrics.position = {
-                    x = iRound(saved.x), y = iRound(saved.y), z = iRound(saved.z),
-                }
-                metrics.position_source = "tower"
-            end
-        end
-    end
-    return metrics
-end
+----------------------------------------------------------------------
+-- Worker loops
+----------------------------------------------------------------------
 
 local function pollLoop()
     while true do
@@ -258,11 +108,11 @@ end
 
 local function heartbeatLoop()
     while true do
-        local metrics = collectMetrics()
+        local m = Metrics.collect()
         if activeWs then
-            client.wsHeartbeat(activeWs, metrics)
+            client.wsHeartbeat(activeWs, m)
         else
-            local _, err = client.heartbeat(metrics)
+            local _, err = client.heartbeat(m)
             if err then log.debug("rpcd", "heartbeat error: " .. tostring(err)) end
         end
         sleep(HEARTBEAT_INTERVAL)
@@ -274,14 +124,14 @@ local function wsAwareSend(target, msg)
     if activeWs then
         local ok = client.wsSend(activeWs, target, msg)
         if ok then return { ok = true } end
-        -- WS send failed; fall through to HTTP
+        -- WS send failed; fall through to HTTP.
     end
     return client.send(target, msg)
 end
 
 local function wsLoop()
     while true do
-        sleep(0)   -- guarantee a yield each iteration
+        sleep(0)   -- yield once per iteration
         local ok, ws, err = pcall(client.wsConnect)
         if not ok then
             log.warn("rpcd", "wsConnect crash: " .. tostring(ws))
@@ -311,66 +161,34 @@ local function wsLoop()
     end
 end
 
-function M.run()
-    log.info("rpcd", "registering with VPS...")
-    local _, err = client.register()
-    if err then log.warn("rpcd", "register failed: " .. tostring(err))
-    else log.info("rpcd", "registered as " .. tostring(os.getComputerID())) end
+----------------------------------------------------------------------
+-- Built-in handlers (ping / redstone_set / exec)
+----------------------------------------------------------------------
 
-    -- Expose subscription + transport-aware send to apps.
-    client.on  = M.on
-    client.off = function(msgType) handlers[msgType] = nil end
-    -- subscribe = idempotent register: drops stale handlers first, then on().
-    -- Apps used to call off()+on() everywhere; this folds it into one call.
-    client.subscribe = function(msgType, fn)
-        handlers[msgType] = nil
-        M.on(msgType, fn)
-    end
-    -- reply(env, payload) — sends a typed reply back to the message origin
-    -- with from/in_reply_to filled in. payload is merged in.
-    client.reply = function(env, payload)
-        local from = env and env.msg and env.msg.from
-                  or env and env.from
-                  or "broadcast"
-        local out = { from = tostring(os.getComputerID()) }
-        if env and env.id then out.in_reply_to = env.id end
-        for k, v in pairs(payload or {}) do out[k] = v end
-        return client.send(from, out)
-    end
-    -- ACL helper for apps. Usage:
-    --   if not unison.rpc.allowed("mine_order", env) then ... end
-    client.allowed = function(msgType, env)
-        return aclAllowed(msgType, senderId(env))
-    end
-    -- Replace send with WS-aware variant; original HTTP send still
-    -- accessible via client.httpSend for fallback debugging.
-    client.httpSend = client.send
-    client.send = wsAwareSend
-    unison.rpc = client
-
-    -- Built-in handlers.
+local function installBuiltinHandlers()
     M.on("ping", function(msg, env)
         client.send(env.from or msg.from or "broadcast", {
             type = "pong",
             from = tostring(os.getComputerID()),
             in_reply_to = env.id,
-            client_ts = msg.ts,            -- echo so caller can compute RTT
+            client_ts = msg.ts,        -- echo so caller can compute RTT
             ts = os.epoch("utc"),
         })
     end)
 
-    -- Remote redstone control. msg = { side = "back", value = 0..15 }.
-    -- Useful for Create train stations / motors / item drains driven by
-    -- a redstone signal from this computer.
+    -- Remote redstone control. Drives Create train stations, motors, and
+    -- item drains from the dashboard via { side, value } payloads.
     M.on("redstone_set", function(msg, env)
         if not (redstone and redstone.setAnalogOutput) then
-            client.reply(env, { type = "redstone_reply", ok = false, err = "no redstone" })
+            client.reply(env, { type = "redstone_reply", ok = false,
+                                err = "no redstone" })
             return
         end
         local side = msg.side
         local val = tonumber(msg.value)
         if not (side and val) then
-            client.reply(env, { type = "redstone_reply", ok = false, err = "side+value required" })
+            client.reply(env, { type = "redstone_reply", ok = false,
+                                err = "side+value required" })
             return
         end
         val = math.max(0, math.min(15, math.floor(val)))
@@ -415,8 +233,7 @@ function M.run()
             return pcall(mod.run, ctx, toks)
         end
 
-        -- Capture print/printError lines emitted while the command runs
-        -- so the caller can see actual stdout in the reply.
+        -- Capture print/printError lines emitted while the command runs.
         local captured = {}
         local origPrint = _G.print
         local origPrintError = _G.printError
@@ -439,7 +256,6 @@ function M.run()
         _G.print = origPrint
         _G.printError = origPrintError
 
-        -- Cap output size so a runaway command can't blow up the bus.
         local MAX_LINES, MAX_LEN = 200, 2000
         if #captured > MAX_LINES then
             local trimmed = {}
@@ -459,6 +275,49 @@ function M.run()
             command = msg.command,
         })
     end)
+end
+
+----------------------------------------------------------------------
+-- Wire up the rpc client API + spawn the loops.
+----------------------------------------------------------------------
+
+local function wireClientApi()
+    client.on  = M.on
+    client.off = function(msgType) handlers[msgType] = nil end
+    -- Idempotent register: drops stale handlers first, then on().
+    -- Apps used to call off()+on() everywhere; this folds it.
+    client.subscribe = function(msgType, fn)
+        handlers[msgType] = nil
+        M.on(msgType, fn)
+    end
+    -- Typed reply. Fills `from` and `in_reply_to`.
+    client.reply = function(env, payload)
+        local from = env and env.msg and env.msg.from
+                  or env and env.from
+                  or "broadcast"
+        local out = { from = tostring(os.getComputerID()) }
+        if env and env.id then out.in_reply_to = env.id end
+        for k, v in pairs(payload or {}) do out[k] = v end
+        return client.send(from, out)
+    end
+    -- ACL helper for apps.
+    client.allowed = function(msgType, env)
+        return Acl.allowed(msgType, senderId(env))
+    end
+    -- WS-aware send; HTTP send still accessible via httpSend.
+    client.httpSend = client.send
+    client.send = wsAwareSend
+    unison.rpc = client
+end
+
+function M.run()
+    log.info("rpcd", "registering with VPS...")
+    local _, err = client.register()
+    if err then log.warn("rpcd", "register failed: " .. tostring(err))
+    else log.info("rpcd", "registered as " .. tostring(os.getComputerID())) end
+
+    wireClientApi()
+    installBuiltinHandlers()
 
     local sched = unison.kernel.scheduler
     sched.spawn(wsLoop,        "rpcd-ws",   { group = "system" })
