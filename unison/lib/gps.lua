@@ -30,29 +30,41 @@ end
 local function normalizeDevices(raw)
     if type(raw) ~= "table" then return {} end
     local out = {}
-    for k, d in pairs(raw) do
-        if type(d) == "table" then
-            local id = rg(d, "id") or k
-            out[tostring(id)] = d
+    -- Hand-rolled iteration in pcall: even pairs() can throw if the
+    -- payload was mangled into something with a hostile metatable.
+    local ok = pcall(function()
+        for k, d in pairs(raw) do
+            if type(d) == "table" then
+                local okId, id = pcall(function() return rg(d, "id") or k end)
+                if okId and id ~= nil then
+                    local okStr, sid = pcall(tostring, id)
+                    if okStr then out[sid] = d end
+                end
+            end
         end
-    end
+    end)
+    if not ok then return {} end
     return out
 end
 
 local function extractPosition(device)
-    local m = rg(device, "metrics")
-    local p = rg(m, "position")
-    if type(p) ~= "table" then return nil end
+    local ok, result = pcall(function()
+        local m = rg(device, "metrics")
+        local p = rg(m, "position")
+        if type(p) ~= "table" then return nil end
 
-    local x = iRound(rg(p, "x") or rg(p, 1))
-    local y = iRound(rg(p, "y") or rg(p, 2))
-    local z = iRound(rg(p, "z") or rg(p, 3))
-    if not (x and y and z) then return nil end
+        local x = iRound(rg(p, "x") or rg(p, 1))
+        local y = iRound(rg(p, "y") or rg(p, 2))
+        local z = iRound(rg(p, "z") or rg(p, 3))
+        if not (x and y and z) then return nil end
 
-    return {
-        x = x, y = y, z = z,
-        source = rg(m, "position_source") or "http",
-    }
+        return {
+            x = x, y = y, z = z,
+            source = rg(m, "position_source") or "http",
+        }
+    end)
+    if not ok then return nil end
+    return result
 end
 
 local function findDevice(devices, idOrName)

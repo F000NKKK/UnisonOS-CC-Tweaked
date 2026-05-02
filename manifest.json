@@ -32,7 +32,7 @@
     "unison/lib/gdi/init.lua": "d8893ed74278c07c714be28da60efedd13abec78449d0d052096ce580e69d4e0",
     "unison/lib/gdi/shapes.lua": "db48a00f240b46d0d1824bf940db2a3050394d3a1e0b1b6bb4ccee81e6a58c51",
     "unison/lib/gdi/text.lua": "78f0efd65dece8332b1f8f5c7958e149ef2f5d55a29b6d0a6400572398bd6fc6",
-    "unison/lib/gps.lua": "ff2f92a65fdbfceaa8e331327417e22bd0e5056bf8404e26a6c5f229a3cb9c44",
+    "unison/lib/gps.lua": "d6b87a5220b91af3b7e1d560f27e51b5d2857a7f35662b2d65137e2a8e294600",
     "unison/lib/home.lua": "c8f8b441fc68c16ca40c4ffa54a2e09462bb8d539ae250396d14691ac434534d",
     "unison/lib/http.lua": "145e3f20245ad3fb862863c382414bdd904648d8e55cebd8e48fc8c94e01804d",
     "unison/lib/init.lua": "d4fdaa37342cb2090e8909900e401708b2a02e7171f3537cdd75a96619e9021e",
