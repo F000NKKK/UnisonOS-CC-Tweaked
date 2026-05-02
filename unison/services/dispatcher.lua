@@ -26,6 +26,9 @@ local M = {}
 
 local STATE_FILE = "/unison/state/dispatcher.json"
 local TICK_S = 5
+local ANNOUNCE_S = 30                -- broadcast our id every 30 s so
+                                     -- workers can discover us without
+                                     -- a manual config entry.
 local WORKER_STALE_MS = 60 * 1000   -- workers we haven't heard from in 60 s
                                     -- are dropped from the idle pool.
 
@@ -270,6 +273,25 @@ function M.tickLoop()
         sleep(TICK_S)
         local ok, err = pcall(tick)
         if not ok then log.warn("dispatcher", "tick error: " .. tostring(err)) end
+    end
+end
+
+-- Periodic broadcast so workers / surveyor pockets find us without
+-- having to hard-code dispatcher_id in every config. POST goes to
+-- /api/broadcast which fans out to every registered node.
+function M.announceLoop()
+    while true do
+        local rpc = unison and unison.rpc
+        if rpc and rpc.broadcast then
+            local id = tostring(os.getComputerID())
+            pcall(rpc.broadcast, {
+                type = "dispatcher_announce",
+                from = id,
+                kind = "dispatcher",
+                ts = os.epoch("utc"),
+            })
+        end
+        sleep(ANNOUNCE_S)
     end
 end
 

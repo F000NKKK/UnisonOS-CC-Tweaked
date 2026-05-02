@@ -14,8 +14,10 @@ return {
         local d = dofile("/unison/services/dispatcher.lua")
         unison.dispatcher = d
         d.start(cfg)
-        if unison.kernel and unison.kernel.scheduler and d.tickLoop then
-            unison.kernel.scheduler.spawn(d.tickLoop, "dispatcher-tick", { group = "system" })
+        if unison.kernel and unison.kernel.scheduler then
+            local sch = unison.kernel.scheduler
+            if d.tickLoop then sch.spawn(d.tickLoop, "dispatcher-tick", { group = "system" }) end
+            if d.announceLoop then sch.spawn(d.announceLoop, "dispatcher-announce", { group = "system" }) end
         end
     end,
 

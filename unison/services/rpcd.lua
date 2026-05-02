@@ -207,6 +207,17 @@ local function installBuiltinHandlers()
         })
     end)
 
+    -- Cache dispatcher announcements via lib.discovery so workers can
+    -- find the dispatcher without manual config. No reply — broadcast
+    -- announcements are fire-and-forget.
+    M.on("dispatcher_announce", function(msg, env)
+        local disc = unison and unison.lib and unison.lib.discovery
+        local id = tostring(env.from or msg.from or "?")
+        if disc and id ~= "?" then
+            disc.announce("dispatcher", id, { ts = msg.ts })
+        end
+    end)
+
     -- Get/set the home point remotely. Used by the dispatcher and the
     -- pocket surveyor so a player can pin a turtle's home from the GUI.
     -- msg = { type="home_get" } | { type="home_set", x,y,z, facing?, label? }

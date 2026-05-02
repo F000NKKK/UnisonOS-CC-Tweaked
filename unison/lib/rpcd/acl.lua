@@ -87,6 +87,7 @@ function M.replyTypeFor(msgType)
     if msgType:match("^worker_") then return "worker_reply" end
     if msgType == "mine_done" then return "mine_done_reply" end
     if msgType == "mine_assign" or msgType == "mine_abort" then return "mine_reply" end
+    if msgType == "dispatcher_announce" then return nil end  -- fire-and-forget
     return nil
 end
 
