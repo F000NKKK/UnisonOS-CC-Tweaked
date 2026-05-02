@@ -29,21 +29,32 @@ unison.async = async
 local ok_lib, lib = pcall(dofile, "/unison/lib/init.lua")
 if ok_lib and type(lib) == "table" then
     unison.lib = lib
+    -- Top-level shortcuts for the new I/O layer. stdio is the single
+    -- text-output entry point; gdi is the graphics primitives package.
+    -- Both end up writing through term.current(), which (post display
+    -- start) is the display multiplex → Shadow → monitors.
+    unison.stdio = lib.stdio
+    unison.gdi   = lib.gdi
 else
     log.warn("kernel", "lib/init.lua failed: " .. tostring(lib))
 end
 
 local function banner(nodeName, nodeRole, version)
-    term.clear()
-    term.setCursorPos(1, 1)
-    if term.isColor and term.isColor() then term.setTextColor(colors.cyan) end
-    print("UnisonOS " .. version)
-    if term.isColor and term.isColor() then term.setTextColor(colors.lightGray) end
-    print("  node: " .. nodeName)
-    print("  role: " .. nodeRole)
-    print("  id:   " .. tostring(os.getComputerID()))
-    if term.setTextColor then term.setTextColor(colors.white) end
-    print("")
+    local io = unison.stdio
+    if not io then
+        -- Fallback for the (theoretical) case where lib failed to load.
+        term.clear(); term.setCursorPos(1, 1)
+        print("UnisonOS " .. version); return
+    end
+    io.clear()
+    io.setColor(colors.cyan)
+    io.print("UnisonOS " .. version)
+    io.setColor(colors.lightGray)
+    io.print("  node: " .. nodeName)
+    io.print("  role: " .. nodeRole)
+    io.print("  id:   " .. tostring(os.getComputerID()))
+    io.setColor(colors.white)
+    io.print("")
 end
 
 function M.start(cfg)

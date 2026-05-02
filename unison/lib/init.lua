@@ -17,4 +17,6 @@ return {
     atlas       = dofile("/unison/lib/atlas.lua"),
     position    = dofile("/unison/lib/position.lua"),
     busy        = dofile("/unison/lib/busy.lua"),
+    stdio       = dofile("/unison/lib/stdio.lua"),
+    gdi         = dofile("/unison/lib/gdi/init.lua"),
 }

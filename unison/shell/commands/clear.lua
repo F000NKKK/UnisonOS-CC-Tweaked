@@ -4,8 +4,11 @@ local M = {
 }
 
 function M.run(ctx, args)
-    term.clear()
-    term.setCursorPos(1, 1)
+    if unison and unison.stdio then
+        unison.stdio.clear()
+    else
+        term.clear(); term.setCursorPos(1, 1)
+    end
 end
 
 return M

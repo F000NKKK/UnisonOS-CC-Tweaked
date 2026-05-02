@@ -28,10 +28,12 @@ local function readonlyTable(t)
     return setmetatable({}, mt)
 end
 
--- Guarantee a printError fallback. CC's BIOS defines it as a global, but in
--- some sandbox/coroutine paths it's been seen missing — falling back to a
--- coloured plain print keeps apps from crashing.
+-- Guarantee a printError fallback. CC's BIOS defines it as a global,
+-- but in some sandbox/coroutine paths it's been seen missing — route
+-- through unison.stdio (single text-output channel) when available, and
+-- fall back to a coloured plain print otherwise.
 local function _printErr(...)
+    if unison and unison.stdio then return unison.stdio.printError(...) end
     if printError then return printError(...) end
     if term and term.setTextColor then
         local prev = term.getTextColor and term.getTextColor() or colors.white
@@ -168,6 +170,12 @@ local function appUnison()
     -- app regardless of permissions; capabilities (like raw http) are still
     -- gated separately, lib.* just provides convenience wrappers.
     u.lib = libModule()
+    -- Text I/O + graphics primitives. Same surface kernel uses.
+    -- Apps should write text through u.stdio and draw through u.gdi
+    -- instead of hitting term.* directly — keeps a single source of
+    -- truth for what reaches the screen.
+    u.stdio = u.lib.stdio
+    u.gdi   = u.lib.gdi
     -- UI framework, lazy-loaded so apps that don't draw don't pay the cost.
     u.ui = {
         buffer  = lazy(function() return dofile("/unison/ui/buffer.lua") end),

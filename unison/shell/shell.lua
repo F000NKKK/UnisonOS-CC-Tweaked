@@ -26,10 +26,15 @@ end
 
 local function prompt(ctx)
     local node = (unison and unison.node) or "node"
-    if term.isColor and term.isColor() then term.setTextColor(colors.lightBlue) end
-    write("[" .. node .. " " .. (ctx.cwd or "/") .. "]")
-    if term.setTextColor then term.setTextColor(colors.white) end
-    write("$ ")
+    local io = unison and unison.stdio
+    if io then
+        if io.isColor() then io.setColor(colors.lightBlue) end
+        io.write("[" .. node .. " " .. (ctx.cwd or "/") .. "]")
+        io.setColor(colors.white)
+        io.write("$ ")
+    else
+        write("[" .. node .. " " .. (ctx.cwd or "/") .. "]$ ")
+    end
 end
 
 return function()
