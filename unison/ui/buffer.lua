@@ -1,18 +1,18 @@
 -- TUI drawing primitives.
 --
--- A Buffer wraps any term-like object (term, monitor, multiplex from the
--- display service) and offers high-level helpers: filled rectangles,
--- bordered boxes with titles, hr/vr lines, positioned text. All routines
--- restore the previous text/background colour and cursor, so callers can
--- compose without bookkeeping.
+-- A Buffer wraps any term-like target (term.current(), a monitor, the
+-- display multiplex, a gdi.Bitmap target). Public surface is unchanged
+-- from earlier versions — :clear, :text, :rect, :hline, :vline, :box,
+-- :wrappedText — but every method now goes through unison.lib.gdi so
+-- there's exactly one drawing pipeline in the OS.
+--
+-- All routines preserve the previous text/background colour and cursor
+-- (gdi.Context:with handles save/restore), so callers can compose
+-- without bookkeeping.
+
+local gdi = dofile("/unison/lib/gdi/init.lua")
 
 local M = {}
-
-local function isColor(t)
-    if t.isColor then return t.isColor() end
-    if t.isColour then return t.isColour() end
-    return false
-end
 
 local Buffer = {}
 Buffer.__index = Buffer
@@ -20,103 +20,95 @@ Buffer.__index = Buffer
 function M.new(target)
     target = target or term.current()
     return setmetatable({
-        t = target,
-        color = isColor(target),
+        t   = target,
+        ctx = gdi.fromTarget(target),
     }, Buffer)
 end
 
-local function withColors(self, fg, bg, fn)
-    local oldFg = self.t.getTextColor and self.t.getTextColor() or colors.white
-    local oldBg = self.t.getBackgroundColor and self.t.getBackgroundColor() or colors.black
-    if fg and self.t.setTextColor then self.t.setTextColor(fg) end
-    if bg and self.t.setBackgroundColor then self.t.setBackgroundColor(bg) end
-    fn()
-    if self.t.setTextColor then self.t.setTextColor(oldFg) end
-    if self.t.setBackgroundColor then self.t.setBackgroundColor(oldBg) end
-end
+function Buffer:target() return self.t end
+function Buffer:context() return self.ctx end
 
-function Buffer:size()
-    return self.t.getSize()
-end
+function Buffer:size() return self.ctx:size() end
 
 function Buffer:clear(bg)
-    withColors(self, nil, bg, function()
-        self.t.clear()
-        self.t.setCursorPos(1, 1)
-    end)
+    -- Filling the whole rectangle keeps the right semantics: previous
+    -- on-screen content is wiped and replaced with `bg`. Falls back to
+    -- the target's own clear when bg is nil so existing call sites
+    -- (Buffer:clear() with no arg) keep their existing behaviour.
+    if bg then
+        local w, h = self:size()
+        self.ctx:fillRect(1, 1, w, h, bg)
+        self.ctx:setCursor(1, 1)
+    else
+        local t = self.t
+        if t.clear then t.clear() end
+        if t.setCursorPos then t.setCursorPos(1, 1) end
+    end
 end
 
 function Buffer:text(x, y, str, fg, bg)
     if not str or str == "" then return end
-    withColors(self, fg, bg, function()
-        self.t.setCursorPos(x, y)
-        self.t.write(str)
-    end)
+    self.ctx:drawText(x, y, str, fg, bg)
 end
 
 function Buffer:rect(x, y, w, h, ch, fg, bg)
-    ch = ch or " "
-    local line = string.rep(ch, w)
-    withColors(self, fg, bg, function()
+    if w < 1 or h < 1 then return end
+    if (not ch) or ch == " " then
+        self.ctx:fillRect(x, y, w, h, bg or fg)
+        return
+    end
+    -- Custom fill char: paint the rectangle one row at a time. Keeps
+    -- pen/brush state via :with so callers don't have to.
+    local row = string.rep(ch, w)
+    self.ctx:with(function(c)
+        if fg then c:setPen(fg) end
+        if bg then c:setBrush(bg) end
         for i = 0, h - 1 do
-            self.t.setCursorPos(x, y + i)
-            self.t.write(line)
+            c:setCursor(x, y + i)
+            c:_rawWrite(row)
         end
     end)
 end
 
 function Buffer:hline(x, y, w, ch, fg, bg)
-    ch = ch or "-"
-    self:text(x, y, string.rep(ch, w), fg, bg)
+    self.ctx:with(function(c)
+        if fg then c:setPen(fg) end
+        if bg then c:setBrush(bg) end
+        c:hLine(x, y, w, ch or "-")
+    end)
 end
 
 function Buffer:vline(x, y, h, ch, fg, bg)
-    ch = ch or "|"
-    withColors(self, fg, bg, function()
-        for i = 0, h - 1 do
-            self.t.setCursorPos(x, y + i)
-            self.t.write(ch)
-        end
+    self.ctx:with(function(c)
+        if fg then c:setPen(fg) end
+        if bg then c:setBrush(bg) end
+        c:vLine(x, y, h, ch or "|")
     end)
 end
 
+-- Filled box with ASCII border + optional centred title. Border uses
+-- "+|-" so any monitor renders cleanly regardless of font feature.
 function Buffer:box(x, y, w, h, title, fg, bg)
+    if w < 2 or h < 2 then return end
     self:rect(x, y, w, h, " ", fg, bg)
-    -- corners + edges using simple ASCII so any monitor renders cleanly
-    withColors(self, fg, bg, function()
-        self.t.setCursorPos(x, y)
-        self.t.write("+" .. string.rep("-", math.max(0, w - 2)) .. "+")
-        self.t.setCursorPos(x, y + h - 1)
-        self.t.write("+" .. string.rep("-", math.max(0, w - 2)) .. "+")
-        for i = 1, h - 2 do
-            self.t.setCursorPos(x, y + i)
-            self.t.write("|")
-            self.t.setCursorPos(x + w - 1, y + i)
-            self.t.write("|")
-        end
+    self.ctx:with(function(c)
+        if fg then c:setPen(fg) end
+        if bg then c:setBrush(bg) end
+        c:rect(x, y, w, h)
         if title and #title > 0 then
             local t = " " .. title .. " "
             if #t > w - 2 then t = t:sub(1, w - 2) end
-            self.t.setCursorPos(x + math.floor((w - #t) / 2), y)
-            self.t.write(t)
+            c:setCursor(x + math.floor((w - #t) / 2), y)
+            c:_rawWrite(t)
         end
     end)
 end
 
--- Print text inside a box, wrapping at width and clipping at height.
+-- Print text inside a w x h box, wrapping at width and clipping at
+-- height. Honors embedded \n / \r.
 function Buffer:wrappedText(x, y, w, h, str, fg, bg)
-    if not str then return end
-    local row = 0
-    for line in tostring(str):gmatch("[^\r\n]*") do
-        while #line > 0 and row < h do
-            local piece = line:sub(1, w)
-            self:text(x, y + row, piece, fg, bg)
-            line = line:sub(w + 1)
-            row = row + 1
-        end
-        if row >= h then return end
-        row = row + 0   -- gmatch yields a final empty line; ignore
-    end
+    if not str or w < 1 or h < 1 then return end
+    self.ctx:drawTextRect(x, y, w, h, str, fg, bg)
 end
 
 return M

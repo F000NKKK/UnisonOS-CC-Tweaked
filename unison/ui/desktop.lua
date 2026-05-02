@@ -341,10 +341,15 @@ function M.run(opts)
         end
     end
 
-    term.setBackgroundColor(colors.black); term.clear()
+    local stdio = unison and unison.stdio
+    local function bgClear()
+        if stdio then stdio.setColor(nil, colors.black); stdio.clear()
+        else term.setBackgroundColor(colors.black); term.clear() end
+    end
+    bgClear()
 
     local function fullRender()
-        term.setBackgroundColor(colors.black); term.clear()
+        bgClear()
         -- Apps go in the workspace; WM draws each window's box and body.
         wm.render()
         -- Chrome on top.
@@ -377,11 +382,17 @@ function M.run(opts)
         end
         if needsRender then fullRender() end
     end
-    term.setTextColor(colors.white)
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    term.setCursorPos(1, 1)
-    print("desktop: stopped.")
+    if stdio then
+        stdio.setColor(colors.white, colors.black)
+        stdio.clear()
+        stdio.print("desktop: stopped.")
+    else
+        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.black)
+        term.clear()
+        term.setCursorPos(1, 1)
+        print("desktop: stopped.")
+    end
 end
 
 return M

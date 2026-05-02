@@ -152,9 +152,11 @@ end
 
 function M.run()
     running = true
-    -- Clean canvas exactly once.
-    term.setBackgroundColor(colors.black)
-    term.clear()
+    -- Clean canvas exactly once. Through stdio so the multiplex Shadow
+    -- and primary stay in sync.
+    local io = unison and unison.stdio
+    if io then io.setColor(nil, colors.black); io.clear()
+    else term.setBackgroundColor(colors.black); term.clear() end
     M.render()
     tickTimer = os.startTimer(1 / TICK_HZ)
     while running do
@@ -175,10 +177,16 @@ function M.run()
         if needsRender then M.render() end
     end
     -- restore terminal
-    term.setTextColor(colors.white)
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    term.setCursorPos(1, 1)
+    local io = unison and unison.stdio
+    if io then
+        io.setColor(colors.white, colors.black)
+        io.clear()
+    else
+        term.setTextColor(colors.white)
+        term.setBackgroundColor(colors.black)
+        term.clear()
+        term.setCursorPos(1, 1)
+    end
 end
 
 function M.stop() running = false end

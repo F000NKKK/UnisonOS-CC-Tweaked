@@ -17,7 +17,7 @@
     "unison/lib/app.lua": "4a875a5fc17128e9b9e5f85fbc1112043a64312f9a559c509456c0adcb2ca429",
     "unison/lib/atlas.lua": "c2f39bf3af4d4677ee2b0e99156bb783a52c28357671fbb58dca6493ece6362f",
     "unison/lib/busy.lua": "d40dc4cf45f6785ae6fbc734613a16174172bd25826549c76f88796fce8bf6c0",
-    "unison/lib/canvas.lua": "03b8f47409e72e6819aa5aaf9b82a5214873dbf3bd328f61b2c0956ee4f3d90c",
+    "unison/lib/canvas.lua": "6d9ddd66f788c61fa8c60bf76ebae9fa85d334fc40dfd60f3725db1dad6fbaa9",
     "unison/lib/cli.lua": "ca8dbf0432bab6135f4a83459faaf845e5938d843a1c0e5c5203e555e4b17f1b",
     "unison/lib/display/monitor.lua": "ce6fa3c539c8a4b3184a20c8c9c201e5329a6ee778b1d220809b2d29f21f7560",
     "unison/lib/display/multiplex.lua": "47818b3c89bce2863a3b183a3da2ff0361df53bfc96d8541397aaa4e85e7f900",
@@ -41,7 +41,7 @@
     "unison/lib/rpcd/metrics.lua": "f3122d250c6570e81c93b6e7fcff354df3e0340d4085cddb0f60d8dc70769b52",
     "unison/lib/scrollback.lua": "d44edc2af234152406cd2128352e48e0871a7d61ed8fa6a34b76edbc3595d71f",
     "unison/lib/semver.lua": "563a44f011169191fb03567e9965e5175f157f3da0b5985041f60575d8ddc083",
-    "unison/lib/stdio.lua": "f90c3e00ed223da2da115190b4d08b2bc8c03659c5d4d4086e7a5c8bc0699be8",
+    "unison/lib/stdio.lua": "dfded3c2dbb3001cfb7008bad5200df4baac77a2319b283d96f6b79c7d41c31e",
     "unison/lib/turtle.lua": "2ab4e8add8b426d61d6d2216830f4826acfc80650fe6ae615edfcba15d2829b9",
     "unison/net/auth.lua": "e6a76a959a3b6150ebfdf7cadd1e4199f1542c4d0a9a19b60331c138f15480d6",
     "unison/net/enroll.lua": "f2f66b86e8ab5600e21ded56ecd5dcdb54db82bd4f1e901bafcb73ea437e5782",
@@ -114,10 +114,10 @@
     "unison/ui/apps/mine.lua": "001686c93bac52f064927ec20b3f099e829a77755b55e76dabcc06b00a8bc6f5",
     "unison/ui/apps/procs.lua": "a287d8047a02201beddf42a5e308ae929de331a9725f54dbe2b57cdf1785c830",
     "unison/ui/apps/services.lua": "95384fa0f481d08889b0961dcb7b501a48cfdbc7b2ea8a028f74b7cd4c0ec0b9",
-    "unison/ui/buffer.lua": "5cd21de700aa6709eab348b12eb740d76c1ae3d410277a208c1940ae60467d6b",
-    "unison/ui/desktop.lua": "5ce8e2429ec5e363d4fb7100b7d2097a4e36ca6bce064432c9cf95faae3255c9",
+    "unison/ui/buffer.lua": "784d404780a1529710c848e8833a712cde3b8fa398a8f9c38741f0709fc12fda",
+    "unison/ui/desktop.lua": "94a8cc06586737a1900b01eb51b0775aba2f1dda5b2d3a65abec797bc274774b",
     "unison/ui/widgets.lua": "451c25b56a3bf1c47b378d5f5aa70cb90527ddb6c3b91c5ffbd3716c7de77468",
-    "unison/ui/wm.lua": "f3677e17045e09d0d63fe8e67bc311f89f0b979803533f9f658a91be64f99e0c"
+    "unison/ui/wm.lua": "810eb212ac412c46233b802d8da53e07515842f8f376e2135cfad08251aa8cf7"
   },
   "entrypoint": "unison/boot.lua",
   "name": "UnisonOS",
@@ -250,5 +250,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.23.0"
+  "version": "0.23.1"
 }
