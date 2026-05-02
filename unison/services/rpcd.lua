@@ -207,6 +207,43 @@ local function installBuiltinHandlers()
         })
     end)
 
+    -- Get/set the home point remotely. Used by the dispatcher and the
+    -- pocket surveyor so a player can pin a turtle's home from the GUI.
+    -- msg = { type="home_get" } | { type="home_set", x,y,z, facing?, label? }
+    --     | { type="home_clear" }
+    M.on("home_get", function(msg, env)
+        local home = unison and unison.lib and unison.lib.home
+        client.reply(env, {
+            type = "home_reply",
+            ok = true,
+            home = home and home.get() or nil,
+        })
+    end)
+
+    M.on("home_set", function(msg, env)
+        local home = unison and unison.lib and unison.lib.home
+        if not home then
+            client.reply(env, { type = "home_reply", ok = false, err = "home lib unavailable" })
+            return
+        end
+        local rec, err = home.set(
+            { x = msg.x, y = msg.y, z = msg.z, facing = msg.facing },
+            { by = "rpc:" .. tostring(env.from or msg.from or "?"), label = msg.label })
+        if not rec then
+            client.reply(env, { type = "home_reply", ok = false, err = tostring(err) })
+            return
+        end
+        log.info("rpcd", "home set via rpc: " ..
+            string.format("(%d,%d,%d)", rec.x, rec.y, rec.z))
+        client.reply(env, { type = "home_reply", ok = true, home = rec })
+    end)
+
+    M.on("home_clear", function(msg, env)
+        local home = unison and unison.lib and unison.lib.home
+        if home then home.clear() end
+        client.reply(env, { type = "home_reply", ok = true })
+    end)
+
     M.on("exec", function(msg, env)
         if not msg.command then return end
         log.info("rpcd", "remote exec: " .. tostring(msg.command))

@@ -143,6 +143,29 @@ function M.collect()
     redstoneIO(metrics)
     mineJob(metrics)
     position(metrics)
+
+    -- Home point (world-anchored) so the dispatcher can route this
+    -- node back after a task. nil if no home was ever set.
+    local lib = unison and unison.lib
+    if lib and lib.home then
+        local h = lib.home.get()
+        if h then
+            metrics.home = {
+                x = h.x, y = h.y, z = h.z,
+                facing = h.facing,
+                label  = h.label,
+                explicit = h.set_by ~= nil and h.set_by ~= "auto",
+            }
+        end
+    end
+
+    -- Device "kind" is a free-form tag the user puts in config to tell
+    -- the dispatcher what role this turtle is suited for ("mining",
+    -- "farming", "lumber"). Pure metadata, no enforcement.
+    if unison and unison.config and unison.config.kind then
+        metrics.kind = tostring(unison.config.kind)
+    end
+
     return metrics
 end
 

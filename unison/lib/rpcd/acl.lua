@@ -82,6 +82,7 @@ function M.replyTypeFor(msgType)
     if msgType:match("^atlas_") then return "atlas_reply" end
     if msgType:match("^patrol_") then return "patrol_reply" end
     if msgType:match("^redstone_") then return "redstone_reply" end
+    if msgType:match("^home_") then return "home_reply" end
     return nil
 end
 
