@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.20.3)
+## Status (current: 0.27.0)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -23,6 +23,9 @@ events, A* pathfinding) so the cluster behaves as one machine.
 | 11    | Pixel desktop environment (`desktop` shell command)         | done   |
 | 12    | Storage networked snapshots (Create-compatible)             | done   |
 | 13    | Redstone / Create-bridge with dashboard control             | done   |
+| 14    | GDI graphics layer + stdio I/O unification                  | done   |
+| 15    | Home points, selection volumes, surveyor pocket app         | done   |
+| 16    | Dispatcher service + mine worker daemon + auto-park         | done   |
 
 ## Quick install
 
@@ -69,8 +72,12 @@ return {
         mine_order = { "1", "2" },
     },
 
-    master = { secret = "CHANGE_ME" },
-    displays = { mirror_all = true, monitors = {} },
+    master  = { secret = "CHANGE_ME" },
+
+    -- Dispatcher: enable on one machine to orchestrate mine workers
+    dispatcher = false,
+    -- dispatcher_id = "12",            -- override discovery; usually not needed
+    -- kind = "mining",                 -- mine worker kind filter (on turtle)
 }
 ```
 
@@ -96,7 +103,8 @@ config; rpcd merges the two).
 | `reboot [-f]` | Reboot (defers if a user job is busy unless `-f`)         |
 | `hardreset`   | Wipe apps/logs/state, keep auth tokens, reboot            |
 | `desktop`     | Launch the pixel-chromed TUI desktop environment          |
-| `displays`    | Manage attached monitors (mirror / scale / bg)            |
+| `home`        | Manage home point: `show / here / set X Y Z [F] [label] / label / clear` |
+| `select`      | WorldEdit-style selection: `list/new/use/show/p1/p2/expand/contract/shift/slice/queue/cancel/rm` |
 | `apitoken`    | `set/show/clear` the VPS API token                        |
 | `acl`         | Per-device RPC firewall: `list/set/clear/reset`           |
 | `upm`         | Package manager (see below)                               |
@@ -144,6 +152,46 @@ Drop a new file under `/unison/ui/apps/<name>.lua` returning
 `{ id, title, roles, make(geom) -> window }` to add an app — no kernel
 changes needed.
 
+## Output pipeline (GDI + stdio)
+
+UnisonOS separates three concerns that were previously entangled:
+
+```
+Physical hardware
+  └─ display service        shadow-buffer multiplexer, letterbox, 20 Hz flush
+       └─ GDI (lib/gdi)     drawing primitives over any term-target
+            └─ stdio         text I/O — lazy-resolved, always hits the multiplex
+```
+
+**Display** (`unison/services/display.lua`) manages the physical monitors via
+`term.redirect(multiplex)` and paints deltas at 20 Hz. Every other module
+writes into the multiplex through GDI or stdio, never directly to `term`.
+
+**GDI** (`unison/lib/gdi/`) is a portable drawing layer similar to Win32 GDI:
+
+| Module          | Provides                                                  |
+|-----------------|-----------------------------------------------------------|
+| `gdi/context`   | `Context` object — pen/brush/cursor state, save/restore   |
+| `gdi/shapes`    | `fillRect`, `rect`, `hLine`, `vLine`, `line` (Bresenham), `frame` |
+| `gdi/text`      | `drawText`, `drawTextRect`, `drawBlit`, `measureText`     |
+| `gdi/bitmap`    | Off-screen cell buffer; `blitTo(dstCtx, x, y)`           |
+| `gdi/blit`      | `bitBlt(src, dstCtx, dstX, dstY)` — one blit call per row |
+| `gdi/init`      | Entry: `gdi.screen()`, `gdi.fromTarget(t)`, `gdi.bitmap(w,h)` |
+
+**stdio** (`unison/lib/stdio.lua`) provides `Stream` objects for text I/O.
+A stream with `t = nil` is *live*: it resolves `term.current()` at each call
+so it always writes to the active multiplex target. Streams can also be
+anchored to an explicit target for off-screen rendering.
+
+```lua
+local out = stdio.stdout()   -- live stream, follows display.start redirect
+out:writeln("hello")
+out:printf("%d items", n)
+```
+
+The `buffer.lua`, `canvas.lua`, and all kernel/shell output modules write
+through GDI or stdio — there is one source of truth and no render conflicts.
+
 ## Packages (UPM)
 
 ```
@@ -178,7 +226,7 @@ upgrade with one changed file downloads one file, not the full 100+ tree.
 
 ### `min_platform` gate
 
-A package manifest can declare `min_platform = "0.17.0"` and UPM refuses
+A package manifest can declare `min_platform = "0.27.0"` and UPM refuses
 to install on older OSes. Push package updates as often as you like;
 only bump the OS for real platform changes.
 
@@ -188,7 +236,8 @@ Default registry (`apps/registry.json`):
 
 | Package     | Latest  | Notes                                               |
 |-------------|---------|-----------------------------------------------------|
-| `mine`      | 2.5.0   | Sector miner: signed end-coords (6-way), GPS-anchored, fuel/home guard, smart resume (no rework), A* goHome via server, `mine abort` (signal a running miner home), atlas event streaming. |
+| `mine`      | 3.0.1   | Sector miner + worker daemon. `mine <xEnd> <yEnd> <zEnd>` digs a signed volume; `mine worker` subscribes to the dispatcher, auto-parks to the volume corner, digs, returns home. GPS-anchored, fuel guard, smart resume, A* goHome, atlas event streaming. |
+| `surveyor`  | 1.2.0   | Pocket-friendly 3D selection editor (26×20 portrait). Draw volume P1/P2 via GPS-here or manual coords, expand/contract/shift/slice, then queue to the dispatcher. Auto-syncs queued/in-progress/done state from the dispatcher every 5 s. |
 | `scanner`   | 1.4.0   | Sphere scanner: streams every block to the server-side atlas. |
 | `farm`      | 1.3.0   | Auto-harvester: walks a row, harvests crops, replants. lib.turtle-based. |
 | `patrol`    | 1.3.0   | Route runner with record/replay/loop. lib.turtle-based. |
@@ -200,6 +249,88 @@ Default registry (`apps/registry.json`):
 
 Installed packages also become callable as bare commands: `mine 16 3 16`,
 `scanner sphere 16`, `pilot 0`. Use `run <name>` for the explicit form.
+
+## Home points
+
+Every device can record a *home point* — the position + facing it should
+return to after finishing a job.
+
+```
+home                          # show current home point
+home here                     # set to current GPS position
+home set 100 64 -200 [F] [label]   # manual coordinates (F = 0..3)
+home label "Sorting hub"      # rename without moving
+home clear                    # remove
+```
+
+A home set via `home here` or `home set` is *explicit* and is never
+automatically overwritten by packages. `mine worker` uses the home point to
+park the turtle between assignments; if no home is set it falls back to the
+GPS position at daemon start.
+
+Home data is stored in `/unison/state/home.json` and exposed in the heartbeat
+so the web console and dispatcher always know where each turtle lives.
+
+## Selection volumes and the dispatcher
+
+### WorldEdit-style selections
+
+```
+select new "north-pit"        # create a named draft selection
+select p1                     # set corner 1 to current GPS position
+select p2                     # set corner 2 to current GPS position
+select expand u 5             # grow up by 5 blocks
+select contract d 2           # shrink from below by 2
+select shift e 3              # translate east by 3
+select slice y 16             # subdivide into 16-block Y layers
+select queue                  # send to dispatcher
+select cancel                 # withdraw from the queue
+select show                   # print dimensions and state
+select list                   # list all saved selections
+```
+
+Selections persist to `/unison/state/selections/` as JSON. Each selection
+tracks a state machine: `draft → queued → in_progress → done | cancelled`.
+The full edit history (p1/p2 sets, expansions, shifts) is preserved.
+
+### Dispatcher service
+
+Enable the dispatcher on one machine (usually a stationary computer near
+the mine):
+
+```lua
+-- /unison/config.lua
+dispatcher = true
+```
+
+Then `service restart dispatcher` (or reboot). The dispatcher:
+
+1. Watches the selection queue (via `selection_queue` RPC).
+2. Discovers idle `mine worker` turtles via their heartbeat (kind, fuel,
+   position, home, busy flag).
+3. Assigns the best-matching idle worker to each queued selection via
+   `mine_assign`.
+4. Broadcasts `dispatcher_announce` every 30 s so workers that started
+   before the dispatcher was up can self-register without config.
+
+Workers register with the dispatcher automatically on `dispatcher_announce`
+or at daemon start if `config.dispatcher_id` is set (or discovered via
+broadcast). No manual ID wiring required.
+
+### End-to-end workflow
+
+1. **Mark volume** — open `surveyor` on a pocket computer, set P1/P2
+   (GPS-here or manual), adjust with expand/slice, tap **Queue**.
+2. **Dispatcher assigns** — within one tick (≤5 s) the dispatcher picks the
+   nearest idle turtle that has enough fuel and a home point set, sends
+   `mine_assign { selection }`.
+3. **Turtle parks and mines** — `mine worker` receives the assignment, calls
+   `nav.goTo(corner)` to auto-park at the volume's top-north-west corner,
+   aligns facing, then digs the volume layer by layer (X→Z→Y). Atlas events
+   stream in real time.
+4. **Done** — turtle sends `mine_done { ok=true }`, returns home via A*, and
+   becomes idle again. The dispatcher marks the selection `done` and picks up
+   the next job.
 
 ## Server-side world atlas
 
@@ -273,6 +404,7 @@ Built-in units:
 | `rpcd`          | HTTP/WebSocket bus client + ACL gate + busy-defer for OS updates. |
 | `gps-host`      | Auto-host GPS coordinates on stationary PCs; reads `gps-host.json`. |
 | `crond`         | Scheduled tasks (cron-expr `*/5 * * * *` OR `every_seconds`). |
+| `dispatcher`    | Selection dispatcher: matches queued volumes to idle mine workers. Enabled only when `config.dispatcher = true`. |
 | `shell`         | Interactive shell.                                          |
 
 `service list / status / start / stop / restart` operate on these.
@@ -314,8 +446,8 @@ device shows up in `devices` and is reachable by its `os.getComputerID()`:
 ```
 [mc-pc /]$ devices
 ID           ROLE       VER     SEEN  NAME
-0            computer   0.20.3  2s    computer-0
-3            turtle     0.20.3  1s    turtle-3
+0            computer   0.27.0  2s    computer-0
+3            turtle     0.27.0  1s    turtle-3
 ```
 
 Send a JSON message:
@@ -357,8 +489,8 @@ list. Recognised permissions:
 
 UniAPI table (`unison.lib.*`) is unconditional: `fs / http / json / semver
 / path / kvstore / canvas / cli / app / fmt / gps / scrollback / turtle /
-atlas`. The TUI framework (`unison.ui.{buffer,wm,widgets}`) is also
-unconditional but lazy-loaded.
+atlas / home / selection / nav / discovery / stdio / gdi`. The TUI framework
+(`unison.ui.{buffer,wm,widgets}`) is also unconditional but lazy-loaded.
 
 `unison.process.markBusy(name) / clearBusy(token)` lets long-running jobs
 declare themselves so the OS-updater defers reboots until they finish.
@@ -419,16 +551,35 @@ unison/
   boot.lua               entry point + two-phase upgrade committer
   config.lua.example     config template
   kernel/                init, scheduler, ipc, log, role, services, sandbox, process, async
-  lib/                   UniAPI: fs, http, json, semver, path, kvstore, canvas, cli, app, fmt, gps, scrollback, turtle, atlas
+  lib/
+    fs, http, json, semver, path, kvstore, cli, app, fmt,
+    gps, scrollback, turtle, atlas, canvas
+    stdio.lua            lazy-resolved text I/O streams
+    home.lua             home point get/set/clear + GPS capture
+    selection.lua        Volume + Selection AABB + state machine
+    nav.lua              GPS-probe facing + axis-aligned goTo + dig tunneling
+    discovery.lua        broadcast announce/lookup for service discovery
+    gdi/                 GDI graphics: context, shapes, text, bitmap, blit
   crypto/                sha256, hmac
   net/                   transport, protocol, auth, enroll, router, netd
   pm/                    UPM internals (sources, registry, installer)
   rpc/                   HTTP+WS bus client
-  services/              service implementations
-  services.d/            declarative service unit files
+  services/
+    display.lua          monitor shadow-buffer service
+    dispatcher.lua       selection-to-worker dispatcher
+    rpcd.lua             HTTP/WS RPC daemon
+    ...
+  services.d/            declarative service unit files (incl. dispatcher.lua)
   cron.d/                cron unit drop directory (initially empty)
   ui/                    TUI buffer / window manager / widgets / desktop / apps
-  shell/                 REPL and built-in commands
+  shell/
+    shell.lua            REPL
+    commands/            built-in commands (incl. home.lua, select.lua)
+  state/
+    home.json            home point (written by `home` command / lib.home)
+    selections/          saved selection JSON files
+    dispatcher.json      dispatcher queue + assignment state
+    discovery.json       service discovery cache
 tools/
   build-manifest.py      OS hash generator (run before commit)
   repo-server/           VPS-side server kit (HTTP/HTTPS/WS/WSS + atlas)
