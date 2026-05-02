@@ -33,7 +33,7 @@
     "unison/lib/gps.lua": "b8458f3ed71c0ca18f145f113978d678389c30cb612a2c4524735712ac66cb75",
     "unison/lib/home.lua": "c8f8b441fc68c16ca40c4ffa54a2e09462bb8d539ae250396d14691ac434534d",
     "unison/lib/http.lua": "145e3f20245ad3fb862863c382414bdd904648d8e55cebd8e48fc8c94e01804d",
-    "unison/lib/init.lua": "23b7a5368704ceb77b2676e4378a0d2acadb77b5c5f3d47e3deefb842aea6494",
+    "unison/lib/init.lua": "3ffabe104950d45954cf961622d7857554df032f21edcc5b422dd438f18b638c",
     "unison/lib/json.lua": "8334e5acde97e4c6e5c64d6ac34d038814c240092f19d998c869f020ec514617",
     "unison/lib/kvstore.lua": "e93d62687cb57300f1deacd0a4677ba7ad2ac9f8db0068c087d737cf3af51fc5",
     "unison/lib/path.lua": "28003f22ab184ca1a7fe22aa14316181cbba98b11f073a40b6b683f93186db61",
@@ -41,6 +41,7 @@
     "unison/lib/rpcd/acl.lua": "9d268458af8daa95eeb039864958ea78dce3595159a60d5a8fbc75c241a644e7",
     "unison/lib/rpcd/metrics.lua": "b574f6463ef7394a974d336f5a180ec5b3690796198a90511e9960cddc0871d7",
     "unison/lib/scrollback.lua": "d44edc2af234152406cd2128352e48e0871a7d61ed8fa6a34b76edbc3595d71f",
+    "unison/lib/selection.lua": "15c6175fd09cd61f1c56ae3e55689bb481d915b967c0c046b9f690d7bc550016",
     "unison/lib/semver.lua": "563a44f011169191fb03567e9965e5175f157f3da0b5985041f60575d8ddc083",
     "unison/lib/stdio.lua": "dfded3c2dbb3001cfb7008bad5200df4baac77a2319b283d96f6b79c7d41c31e",
     "unison/lib/turtle.lua": "2ab4e8add8b426d61d6d2216830f4826acfc80650fe6ae615edfcba15d2829b9",
@@ -100,6 +101,7 @@
     "unison/shell/commands/rsend.lua": "b0a949377ada8a0f06777251c98d17480546b298d9a67713b2dea5e372403682",
     "unison/shell/commands/run.lua": "bce26db964bbc564f7efc8c20c73d9e380beefb0f8cedf1022338a8c76fd8260",
     "unison/shell/commands/scroll.lua": "34c4596d0e6ac99aeab778fbb9c4b578edff6744bb0854295422cde1113bf2ac",
+    "unison/shell/commands/select.lua": "25a48be9c42a4ea4f970175306b80cd4371c8660dd460d88998f4181aee2bb15",
     "unison/shell/commands/service.lua": "4698fe26ac54a39d553e7608b068d357c192d6a9f110d363f29ff992d96fa5e2",
     "unison/shell/commands/stdio.lua": "c499783b58a223e2b15984a31f9308e1fdd2357523916a5001d9d52add8943c3",
     "unison/shell/commands/tail.lua": "f904fb53ceaa572bcc92770ad746bac96ce31b3a6e08caedc7c069a2a1dc259b",
@@ -156,6 +158,7 @@
       "unison/lib/position.lua",
       "unison/lib/busy.lua",
       "unison/lib/home.lua",
+      "unison/lib/selection.lua",
       "unison/lib/display/shadow.lua",
       "unison/lib/display/monitor.lua",
       "unison/lib/display/multiplex.lua",
@@ -210,6 +213,7 @@
       "unison/shell/path.lua",
       "unison/shell/commands/help.lua",
       "unison/shell/commands/home.lua",
+      "unison/shell/commands/select.lua",
       "unison/shell/commands/run.lua",
       "unison/shell/commands/ps.lua",
       "unison/shell/commands/kill.lua",
@@ -254,5 +258,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.24.0"
+  "version": "0.25.0"
 }

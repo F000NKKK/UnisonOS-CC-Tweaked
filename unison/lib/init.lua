@@ -18,6 +18,7 @@ return {
     position    = dofile("/unison/lib/position.lua"),
     busy        = dofile("/unison/lib/busy.lua"),
     home        = dofile("/unison/lib/home.lua"),
+    selection   = dofile("/unison/lib/selection.lua"),
     stdio       = dofile("/unison/lib/stdio.lua"),
     gdi         = dofile("/unison/lib/gdi/init.lua"),
 }
