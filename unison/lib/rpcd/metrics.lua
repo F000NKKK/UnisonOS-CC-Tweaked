@@ -159,12 +159,14 @@ function M.collect()
         end
     end
 
-    -- Device "kind" is a free-form tag the user puts in config to tell
-    -- the dispatcher what role this turtle is suited for ("mining",
-    -- "farming", "lumber"). Pure metadata, no enforcement.
-    if unison and unison.config and unison.config.kind then
-        metrics.kind = tostring(unison.config.kind)
+    -- Device "kind" — config.lua wins, then /unison/state/worker.json,
+    -- then omit (daemon default is "mining").
+    local kind = unison and unison.config and unison.config.kind
+    if not kind and lib and lib.fs and lib.fs.readJson then
+        local w = lib.fs.readJson("/unison/state/worker.json")
+        if type(w) == "table" and w.kind then kind = w.kind end
     end
+    if kind then metrics.kind = tostring(kind) end
 
     return metrics
 end

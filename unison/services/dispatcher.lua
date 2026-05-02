@@ -1,81 +1,80 @@
 -- Dispatcher service.
 --
--- Runs on one node in the fleet (set unison.config.dispatcher = true)
--- and matches queued mining selections against idle worker turtles.
+-- Runs on one node (config.dispatcher = true). When a selection is
+-- queued the dispatcher counts idle workers and splits the volume into
+-- N equal slices — one per worker — so all turtles mine in parallel.
 --
--- Wire model:
---   Surveyor / shell  ──selection_queue──→  Dispatcher
---   Workers           ──worker_register──→  Dispatcher (once at boot)
---   Workers           ──worker_idle/busy─→  Dispatcher (status changes)
---   Workers           ──mine_done────────→  Dispatcher (completion)
---   Dispatcher        ──mine_assign──────→  Worker
+-- Split model
+--   volume split along longest horizontal axis (X or Z).
+--   Each slice is assigned to one worker via mine_assign.
+--   Sub-selections are tracked with parent_id; when all finish the
+--   parent moves to "done" (or "partial" if any slice failed).
 --
--- The tick loop walks queued selections, finds the closest idle
--- worker whose `kind` matches "mining" (or the selection's required
--- kind), and sends mine_assign. Worker accepts → busy → mines →
--- mine_done → dispatcher marks selection done and worker idle again.
+-- State machine (top-level selection)
+--   queued → in_progress → done | partial | failed | cancelled
 --
--- All state in /unison/state/dispatcher.json so a reboot doesn't lose
--- in-flight assignments. Tick interval is 5 s — fast enough for an
--- interactive surveyor, slow enough not to spam the bus.
+-- Sub-selections inherit the same states; they are invisible in the
+-- selection_list reply (consumers see only the parent with part counts).
 
-local log  = dofile("/unison/kernel/log.lua")
-local sels = nil      -- lazy: lib.selection (loaded after kernel.lib is up)
+local log = dofile("/unison/kernel/log.lua")
 
 local M = {}
 
-local STATE_FILE = "/unison/state/dispatcher.json"
-local TICK_S = 5
-local ANNOUNCE_S = 30                -- broadcast our id every 30 s so
-                                     -- workers can discover us without
-                                     -- a manual config entry.
-local WORKER_STALE_MS = 60 * 1000   -- workers we haven't heard from in 60 s
-                                    -- are dropped from the idle pool.
+local STATE_FILE    = "/unison/state/dispatcher.json"
+local TICK_S        = 5
+local ANNOUNCE_S    = 30
+local WORKER_STALE_MS = 60 * 1000
 
 ----------------------------------------------------------------------
--- Persistent + in-memory state
+-- Persistent state
 ----------------------------------------------------------------------
 
 local state = {
-    queue       = {},  -- selectionId-keyed map of queued selections
-    assignments = {},  -- selectionId → workerId (in-progress)
-    workers     = {},  -- workerId → { kind, idle, last_seen, position,
-                       --              fuel, home, capabilities }
+    queue       = {},  -- id → selection (top-level + sub-selections)
+    assignments = {},  -- selectionId → workerId
+    workers     = {},  -- workerId → {kind, idle, last_seen, position, fuel, home}
 }
 
 local function nowMs() return os.epoch and os.epoch("utc") or 0 end
-
-local function lib() return unison and unison.lib end
+local function lib()   return unison and unison.lib end
 
 local function readJson(path)
-    local L = lib(); if L and L.fs and L.fs.readJson then return L.fs.readJson(path) end
+    local L = lib()
+    if L and L.fs and L.fs.readJson then return L.fs.readJson(path) end
     if not fs.exists(path) then return nil end
     local h = fs.open(path, "r"); if not h then return nil end
     local s = h.readAll(); h.close()
-    local ok, t = pcall(textutils.unserializeJSON, s); return ok and t or nil
+    local ok, t = pcall(textutils.unserializeJSON, s)
+    return ok and t or nil
 end
 
 local function writeJson(path, data)
-    local L = lib(); if L and L.fs and L.fs.writeJson then return L.fs.writeJson(path, data) end
+    local L = lib()
+    if L and L.fs and L.fs.writeJson then return L.fs.writeJson(path, data) end
     local d = fs.getDir(path)
     if d ~= "" and not fs.exists(d) then fs.makeDir(d) end
     local h = fs.open(path, "w"); if not h then return false end
     h.write(textutils.serializeJSON(data)); h.close(); return true
 end
 
-local function persist() writeJson(STATE_FILE, {
-    queue = state.queue, assignments = state.assignments, workers = state.workers,
-}) end
+local function persist()
+    writeJson(STATE_FILE, {
+        queue       = state.queue,
+        assignments = state.assignments,
+        workers     = state.workers,
+    })
+end
 
 local function restore()
-    local t = readJson(STATE_FILE); if type(t) ~= "table" then return end
+    local t = readJson(STATE_FILE)
+    if type(t) ~= "table" then return end
     state.queue       = t.queue       or {}
     state.assignments = t.assignments or {}
     state.workers     = t.workers     or {}
 end
 
 ----------------------------------------------------------------------
--- Worker registry helpers
+-- Worker helpers
 ----------------------------------------------------------------------
 
 local function touchWorker(id, patch)
@@ -90,81 +89,186 @@ local function isStale(w)
     return (nowMs() - (w.last_seen or 0)) > WORKER_STALE_MS
 end
 
--- Manhattan distance between two world points, or large number if any
--- side is missing — keeps it usable for `min` comparisons.
 local function manhattan(a, b)
     if not (a and b and a.x and b.x) then return math.huge end
     return math.abs(a.x - b.x) + math.abs(a.y - b.y) + math.abs(a.z - b.z)
 end
 
-local function pickWorker(selection)
-    -- Match: kind == "mining" (or "any") AND idle AND not stale AND
-    -- not currently assigned. Tie-break by manhattan distance from
-    -- worker's position to selection volume's min corner.
-    local volMin = selection.volume and selection.volume.min
-    local best, bestDist
+-- Returns list of {id, dist} for all idle, non-stale, unassigned workers
+-- whose kind matches "mining" or "any". Sorted closest-to-point first.
+local function idleWorkers(nearPoint)
+    local taken = {}
+    for _, wid in pairs(state.assignments) do taken[wid] = true end
+
+    local out = {}
     for id, w in pairs(state.workers) do
         if w.idle and not isStale(w)
-           and (w.kind == "mining" or w.kind == "any") then
-            local taken = false
-            for _, assignedTo in pairs(state.assignments) do
-                if assignedTo == id then taken = true; break end
+           and (w.kind == "mining" or w.kind == "any")
+           and not taken[id] then
+            out[#out + 1] = { id = id, dist = manhattan(w.position, nearPoint) }
+        end
+    end
+    table.sort(out, function(a, b) return a.dist < b.dist end)
+    return out
+end
+
+----------------------------------------------------------------------
+-- Volume splitting
+----------------------------------------------------------------------
+
+-- Split vol into n roughly-equal slices along the longest horizontal
+-- axis (X or Z). Returns a list of sub-volumes (may be < n if the
+-- dimension is smaller than n).
+local function splitVolume(vol, n)
+    if n <= 1 then return { vol } end
+    local dx = vol.max.x - vol.min.x + 1
+    local dz = vol.max.z - vol.min.z + 1
+    local slices = {}
+
+    if dx >= dz then
+        -- Split along X
+        for i = 0, n - 1 do
+            local x0 = vol.min.x + math.floor(dx * i / n)
+            local x1 = vol.min.x + math.floor(dx * (i + 1) / n) - 1
+            if x0 <= x1 then
+                slices[#slices + 1] = {
+                    min = { x = x0, y = vol.min.y, z = vol.min.z },
+                    max = { x = x1, y = vol.max.y, z = vol.max.z },
+                }
             end
-            if not taken then
-                local d = manhattan(w.position, volMin)
-                if not best or d < bestDist then
-                    best, bestDist = id, d
-                end
+        end
+    else
+        -- Split along Z
+        for i = 0, n - 1 do
+            local z0 = vol.min.z + math.floor(dz * i / n)
+            local z1 = vol.min.z + math.floor(dz * (i + 1) / n) - 1
+            if z0 <= z1 then
+                slices[#slices + 1] = {
+                    min = { x = vol.min.x, y = vol.min.y, z = z0 },
+                    max = { x = vol.max.x, y = vol.max.y, z = z1 },
+                }
             end
         end
     end
-    return best
+    return slices
 end
 
 ----------------------------------------------------------------------
--- Dispatch tick
+-- Dispatch
 ----------------------------------------------------------------------
 
-local function dispatchOne(rpc, selectionId, selection)
-    if state.assignments[selectionId] then return false end   -- already assigned
-    local workerId = pickWorker(selection)
-    if not workerId then return false end
-
-    local payload = {
-        type = "mine_assign",
-        selection_id = selectionId,
-        volume = selection.volume,
-        name = selection.name,
-        return_home = true,        -- mine 3.0 reads /unison/state/home.json
-    }
-    local res = rpc.send(workerId, payload)
-    if not (res and (res.ok or res.id)) then
-        log.warn("dispatcher", "send mine_assign failed for " .. tostring(workerId))
-        return false
+-- Try to dispatch a top-level queued selection. Splits the volume
+-- among however many idle workers are currently available and fires
+-- mine_assign to each. Marks the selection in_progress immediately;
+-- the parent tracks parts_total / parts_done / parts_failed.
+local function dispatchMany(rpc, selId, sel)
+    local vol = sel.volume
+    if not (vol and vol.min and vol.max) then
+        sel.state = "failed"
+        sel.error  = "no volume in selection"
+        persist()
+        return
     end
 
-    state.assignments[selectionId] = workerId
-    state.workers[workerId].idle = false
-    selection.state = "in_progress"
-    state.queue[selectionId] = selection
+    local workers = idleWorkers(vol.min)
+    if #workers == 0 then return end   -- no workers yet; retry next tick
+
+    local n      = #workers
+    local slices = splitVolume(vol, n)
+    n = #slices                        -- actual count (vol may be thin)
+
+    sel.state       = "in_progress"
+    sel.parts_total = n
+    sel.parts_done  = 0
+    sel.parts_failed = 0
+
+    if n == 1 then
+        -- Assign the whole volume without creating a sub-selection.
+        local w = workers[1]
+        state.assignments[selId]   = w.id
+        state.workers[w.id].idle   = false
+        local ok = pcall(rpc.send, w.id, {
+            type         = "mine_assign",
+            selection_id = selId,
+            volume       = vol,
+            name         = sel.name,
+            return_home  = true,
+        })
+        if not ok then
+            sel.state  = "queued"   -- rollback, try next tick
+            sel.parts_total  = nil
+            state.assignments[selId] = nil
+            state.workers[w.id].idle = true
+        else
+            log.info("dispatcher", string.format("assigned %s → worker %s (1 slice)",
+                selId, w.id))
+        end
+    else
+        -- Assign each slice to one worker.
+        local dispatched = 0
+        for i, slice in ipairs(slices) do
+            local w = workers[i]
+            if not w then break end
+
+            local subId  = selId .. ":" .. i
+            local subSel = {
+                id        = subId,
+                parent_id = selId,
+                name      = (sel.name or selId) .. " [" .. i .. "/" .. n .. "]",
+                volume    = slice,
+                state     = "in_progress",
+            }
+            state.queue[subId]       = subSel
+            state.assignments[subId] = w.id
+            state.workers[w.id].idle = false
+
+            local ok, err = pcall(rpc.send, w.id, {
+                type         = "mine_assign",
+                selection_id = subId,
+                volume       = slice,
+                name         = subSel.name,
+                return_home  = true,
+            })
+            if not ok then
+                log.warn("dispatcher", "mine_assign to " .. w.id .. " failed: " .. tostring(err))
+                subSel.state             = "failed"
+                state.assignments[subId] = nil
+                state.workers[w.id].idle = true
+                sel.parts_failed         = sel.parts_failed + 1
+            else
+                dispatched = dispatched + 1
+                log.info("dispatcher", string.format(
+                    "assigned %s → worker %s (slice %d/%d)", subId, w.id, i, n))
+            end
+        end
+
+        if dispatched == 0 then
+            -- All sends failed; rollback to queued so tick retries.
+            sel.state        = "queued"
+            sel.parts_total  = nil
+            sel.parts_done   = nil
+            sel.parts_failed = nil
+            for i = 1, n do state.queue[selId .. ":" .. i] = nil end
+        elseif (sel.parts_failed or 0) >= n then
+            sel.state = "failed"
+        end
+    end
+
     persist()
-    log.info("dispatcher", string.format("assigned %s → %s", selectionId, workerId))
-    return true
 end
+
+----------------------------------------------------------------------
+-- Tick
+----------------------------------------------------------------------
 
 local function tick()
-    local rpc = unison and unison.rpc; if not rpc then return end
-    -- Drop stale workers from the pool so we don't keep trying to
-    -- assign to a turtle that vanished.
-    for id, w in pairs(state.workers) do
-        if isStale(w) and w.idle then
-            -- keep the record (so reconnects pick up state), just
-            -- don't consider it for matching this tick.
-        end
-    end
+    local rpc = unison and unison.rpc
+    if not rpc then return end
+
     for selId, sel in pairs(state.queue) do
-        if sel.state == "queued" or sel.state == "draft" then
-            dispatchOne(rpc, selId, sel)
+        if (sel.state == "queued" or sel.state == "draft")
+           and not sel.parent_id then
+            dispatchMany(rpc, selId, sel)
         end
     end
 end
@@ -173,10 +277,29 @@ end
 -- RPC handlers
 ----------------------------------------------------------------------
 
-local function installHandlers()
-    local rpc = unison and unison.rpc; if not rpc then return end
+local function onParentPartDone(selId, ok)
+    local parent = state.queue[selId]
+    if not parent then return end
+    if ok then
+        parent.parts_done   = (parent.parts_done   or 0) + 1
+    else
+        parent.parts_failed = (parent.parts_failed or 0) + 1
+    end
+    local total = parent.parts_total or 0
+    local done  = (parent.parts_done or 0) + (parent.parts_failed or 0)
+    if done >= total then
+        parent.state = (parent.parts_failed or 0) == 0 and "done" or "partial"
+        log.info("dispatcher", string.format(
+            "selection %s complete: %d/%d ok, %d failed",
+            selId, parent.parts_done or 0, total, parent.parts_failed or 0))
+    end
+end
 
-    -- selection_queue { selection = {...selection table...} }
+local function installHandlers()
+    local rpc = unison and unison.rpc
+    if not rpc then return end
+
+    -- selection_queue { selection }
     rpc.subscribe("selection_queue", function(msg, env)
         if type(msg.selection) ~= "table" or not msg.selection.id then
             rpc.reply(env, { type = "selection_reply", ok = false, err = "bad payload" })
@@ -186,30 +309,68 @@ local function installHandlers()
         sel.state = "queued"
         state.queue[sel.id] = sel
         persist()
-        log.info("dispatcher", "queued " .. sel.id .. " (" ..
-            tostring(sel.name or "?") .. ")")
+        log.info("dispatcher", "queued " .. sel.id ..
+            " (" .. tostring(sel.name or "?") .. ")")
         rpc.reply(env, { type = "selection_reply", ok = true, id = sel.id })
     end)
 
+    -- selection_cancel { id }
     rpc.subscribe("selection_cancel", function(msg, env)
         local id = msg.id
-        if state.queue[id] then state.queue[id].state = "cancelled" end
-        local worker = state.assignments[id]
-        if worker then
-            -- Tell the assigned worker to abort.
-            rpc.send(worker, { type = "mine_abort", selection_id = id })
-            state.assignments[id] = nil
-            if state.workers[worker] then state.workers[worker].idle = true end
+
+        -- Abort all sub-selections first.
+        for subId, subSel in pairs(state.queue) do
+            if subSel.parent_id == id and subSel.state == "in_progress" then
+                subSel.state = "cancelled"
+                local wid = state.assignments[subId]
+                if wid then
+                    pcall(rpc.send, wid, { type = "mine_abort", selection_id = subId })
+                    state.assignments[subId] = nil
+                    if state.workers[wid] then state.workers[wid].idle = true end
+                end
+            end
         end
+
+        -- Abort direct assignment (n=1 path, no sub-selections).
+        local wid = state.assignments[id]
+        if wid then
+            pcall(rpc.send, wid, { type = "mine_abort", selection_id = id })
+            state.assignments[id] = nil
+            if state.workers[wid] then state.workers[wid].idle = true end
+        end
+
+        if state.queue[id] then state.queue[id].state = "cancelled" end
         persist()
         rpc.reply(env, { type = "selection_reply", ok = true, id = id })
     end)
 
+    -- selection_list {} — returns top-level selections with part counts.
     rpc.subscribe("selection_list", function(msg, env)
+        -- Gather sub-selection summaries per parent.
+        local subInfo = {}
+        for subId, subSel in pairs(state.queue) do
+            if subSel.parent_id then
+                local p = subSel.parent_id
+                subInfo[p] = subInfo[p] or {}
+                subInfo[p][#subInfo[p] + 1] = {
+                    id     = subId,
+                    state  = subSel.state,
+                    volume = subSel.volume,
+                    worker = state.assignments[subId],
+                }
+            end
+        end
         local out = {}
-        for id, s in pairs(state.queue) do out[#out + 1] = s end
-        rpc.reply(env, { type = "selection_reply", ok = true, selections = out,
-                          assignments = state.assignments })
+        for id, s in pairs(state.queue) do
+            if not s.parent_id then
+                local entry = {}
+                for k, v in pairs(s) do entry[k] = v end
+                entry.parts = subInfo[id]
+                out[#out + 1] = entry
+            end
+        end
+        rpc.reply(env, { type = "selection_reply", ok = true,
+                          selections = out, workers = state.workers })
     end)
 
     -- worker_register { kind, position, fuel, home, capabilities }
@@ -224,34 +385,54 @@ local function installHandlers()
             capabilities = msg.capabilities,
         })
         persist()
-        log.info("dispatcher", "worker registered: " .. id .. " kind=" .. tostring(msg.kind))
+        log.info("dispatcher", "worker registered: " .. id ..
+            " kind=" .. tostring(msg.kind))
         rpc.reply(env, { type = "worker_reply", ok = true })
     end)
 
     rpc.subscribe("worker_idle", function(msg, env)
         local id = tostring(env.from or msg.from or "?")
-        touchWorker(id, { idle = true, position = msg.position, fuel = msg.fuel })
+        touchWorker(id, {
+            idle     = true,
+            position = msg.position,
+            fuel     = msg.fuel,
+        })
         rpc.reply(env, { type = "worker_reply", ok = true })
     end)
 
     rpc.subscribe("worker_busy", function(msg, env)
         local id = tostring(env.from or msg.from or "?")
-        touchWorker(id, { idle = false, position = msg.position, fuel = msg.fuel })
+        touchWorker(id, {
+            idle     = false,
+            position = msg.position,
+            fuel     = msg.fuel,
+        })
         rpc.reply(env, { type = "worker_reply", ok = true })
     end)
 
-    -- mine_done { selection_id, ok, err? } — turtle reports completion.
+    -- mine_done { selection_id, ok, err? }
     rpc.subscribe("mine_done", function(msg, env)
-        local id = msg.selection_id; if not id then return end
-        local sel = state.queue[id]
-        if sel then sel.state = msg.ok and "done" or "failed" end
-        local worker = state.assignments[id]
-        state.assignments[id] = nil
-        if worker and state.workers[worker] then
-            state.workers[worker].idle = true
+        local id  = msg.selection_id
+        local sel = id and state.queue[id]
+
+        if sel then
+            sel.state = msg.ok and "done" or "failed"
+            sel.error = msg.err
+
+            if sel.parent_id then
+                onParentPartDone(sel.parent_id, msg.ok)
+            end
         end
+
+        local wid = state.assignments[id]
+        state.assignments[id] = nil
+        if wid and state.workers[wid] then
+            state.workers[wid].idle = true
+        end
+
         persist()
-        log.info("dispatcher", "mine_done " .. id .. " ok=" .. tostring(msg.ok))
+        log.info("dispatcher", "mine_done " .. tostring(id) ..
+            " ok=" .. tostring(msg.ok))
         rpc.reply(env, { type = "mine_done_reply", ok = true })
     end)
 end
@@ -261,41 +442,38 @@ end
 ----------------------------------------------------------------------
 
 function M.start(cfg)
-    sels = unison and unison.lib and unison.lib.selection
     restore()
     installHandlers()
-    log.info("dispatcher", "online; queue=" .. tostring(table.concat({}, ",")) ..
-        " workers=" .. tostring(table.concat({}, ",")))
+    local qn = 0; for _ in pairs(state.queue)   do qn = qn + 1 end
+    local wn = 0; for _ in pairs(state.workers) do wn = wn + 1 end
+    log.info("dispatcher", "online; queued=" .. qn .. " workers=" .. wn)
 end
 
 function M.tickLoop()
     while true do
         sleep(TICK_S)
         local ok, err = pcall(tick)
-        if not ok then log.warn("dispatcher", "tick error: " .. tostring(err)) end
+        if not ok then
+            log.warn("dispatcher", "tick error: " .. tostring(err))
+        end
     end
 end
 
--- Periodic broadcast so workers / surveyor pockets find us without
--- having to hard-code dispatcher_id in every config. POST goes to
--- /api/broadcast which fans out to every registered node.
 function M.announceLoop()
     while true do
         local rpc = unison and unison.rpc
         if rpc and rpc.broadcast then
-            local id = tostring(os.getComputerID())
             pcall(rpc.broadcast, {
                 type = "dispatcher_announce",
-                from = id,
+                from = tostring(os.getComputerID()),
                 kind = "dispatcher",
-                ts = os.epoch("utc"),
+                ts   = os.epoch("utc"),
             })
         end
         sleep(ANNOUNCE_S)
     end
 end
 
--- Read-only state inspector for the shell `dispatcher` command.
 function M.snapshot()
     return {
         queue       = state.queue,
