@@ -42,7 +42,7 @@
     "unison/lib/path.lua": "28003f22ab184ca1a7fe22aa14316181cbba98b11f073a40b6b683f93186db61",
     "unison/lib/position.lua": "33632380347872d6a25b9faef8728ecc0ea836643c25f2ae79fb1bc3d5ed2972",
     "unison/lib/rpcd/acl.lua": "71949ec6128f2d76bb8a0a6c22e9d3142d9f301024830dcfe8caeffaa55c4abf",
-    "unison/lib/rpcd/metrics.lua": "1a3121ead2b67d6a706985d3c7dbdb1eb2896657fa22da08f4051b20868d5261",
+    "unison/lib/rpcd/metrics.lua": "e19c70bd87a9853bf7cd89f2726417ec1bced48fda8846ac0a3200252a045f99",
     "unison/lib/scrollback.lua": "d44edc2af234152406cd2128352e48e0871a7d61ed8fa6a34b76edbc3595d71f",
     "unison/lib/selection.lua": "15c6175fd09cd61f1c56ae3e55689bb481d915b967c0c046b9f690d7bc550016",
     "unison/lib/semver.lua": "563a44f011169191fb03567e9965e5175f157f3da0b5985041f60575d8ddc083",

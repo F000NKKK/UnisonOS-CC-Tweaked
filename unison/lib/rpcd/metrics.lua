@@ -174,6 +174,37 @@ function M.collect()
     end
     if kind then metrics.kind = tostring(kind) end
 
+    -- Dispatcher snapshot (only set on the dispatcher node). Lets the
+    -- web dashboard show queue + workers + fuel-help via /api/devices
+    -- without a dedicated endpoint.
+    if unison and unison.dispatcher and unison.dispatcher.snapshot then
+        local okSnap, snap = pcall(unison.dispatcher.snapshot)
+        if okSnap and type(snap) == "table" then
+            -- Trim to just what the dashboard needs (avoid bloating the
+            -- heartbeat with the entire selection history).
+            local qOut = {}
+            for id, sel in pairs(snap.queue or {}) do
+                if not sel.parent_id then
+                    qOut[id] = {
+                        id           = id,
+                        name         = sel.name,
+                        state        = sel.state,
+                        volume       = sel.volume,
+                        parts_total  = sel.parts_total,
+                        parts_done   = sel.parts_done,
+                        parts_failed = sel.parts_failed,
+                    }
+                end
+            end
+            metrics.dispatcher = {
+                queue       = qOut,
+                workers     = snap.workers or {},
+                assignments = snap.assignments or {},
+                fuel_help   = snap.fuel_help or {},
+            }
+        end
+    end
+
     return metrics
 end
 

@@ -210,6 +210,7 @@
   <a data-tab="map">Map</a>
   <a data-tab="events">Events</a>
   <a data-tab="cron">Cron</a>
+  <a data-tab="dispatcher">Dispatcher <span class="badge" id="badge-dispatcher">0</span></a>
   <a data-tab="logs">Logs</a>
 </nav>
 
@@ -408,6 +409,52 @@
         </table>
       </div>
     </section>
+  </div>
+
+  <!-- ==================== Dispatcher ==================== -->
+  <div class="page" id="page-dispatcher" hidden>
+    <div style="display:grid; grid-template-rows: 1fr 1fr 1fr; gap: 6px; height: 100%;">
+
+      <section class="panel">
+        <h2><span>Selection queue</span>
+          <span class="right small" id="dispatcher-host">(no dispatcher)</span></h2>
+        <div class="body">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Name</th><th>State</th><th>Volume</th>
+              <th>Parts</th><th>Failed</th><th></th>
+            </tr></thead>
+            <tbody id="dispatch-queue-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2><span>Workers</span></h2>
+        <div class="body">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>Kind</th><th>State</th><th>Fuel</th>
+              <th>Coal</th><th>Position</th><th>Home</th>
+            </tr></thead>
+            <tbody id="dispatch-workers-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2><span>Fuel-help requests</span></h2>
+        <div class="body">
+          <table>
+            <thead><tr>
+              <th>Worker</th><th>Fuel</th><th>Position</th><th>Age</th>
+            </tr></thead>
+            <tbody id="dispatch-fuelhelp-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
   </div>
 
   <!-- ==================== Logs ==================== -->
@@ -752,6 +799,9 @@
       if (activeTab === 'redstone') renderRedstone();
       if (activeTab === 'events') refreshEvents();
       if (activeTab === 'pilot')  populatePilotTargets();
+      if (activeTab === 'dispatcher') renderDispatcher();
+      // Always update the dispatcher badge so it reflects queue size.
+      updateDispatcherBadge();
       // Diff-based toast notifications.
       try { notifyChanges(devices); } catch (_) {}
     } catch (e) {
@@ -1545,6 +1595,149 @@
     }
   }
 
+  // ---- Dispatcher tab --------------------------------------------------
+
+  function findDispatcher() {
+    if (!devices) return null;
+    let best = null;
+    for (const id of Object.keys(devices)) {
+      const d = devices[id];
+      const disp = d.metrics && d.metrics.dispatcher;
+      if (disp) {
+        // Pick the freshest dispatcher node if more than one is online
+        if (!best || (d.last_seen || 0) > (best.last_seen || 0)) {
+          best = { id, device: d, snapshot: disp };
+        }
+      }
+    }
+    return best;
+  }
+
+  function updateDispatcherBadge() {
+    const disp = findDispatcher();
+    const badge = $('badge-dispatcher');
+    if (!disp) { badge.textContent = '-'; return; }
+    const q = disp.snapshot.queue || {};
+    let active = 0;
+    for (const k of Object.keys(q)) {
+      const s = q[k].state;
+      if (s === 'queued' || s === 'in_progress') active++;
+    }
+    badge.textContent = active;
+  }
+
+  function fmtVol(v) {
+    if (!v || !v.min || !v.max) return '-';
+    const dx = v.max.x - v.min.x + 1;
+    const dy = v.max.y - v.min.y + 1;
+    const dz = v.max.z - v.min.z + 1;
+    return `${dx}×${dy}×${dz}`;
+  }
+
+  function fmtPos(p) {
+    if (!p || p.x === undefined) return '-';
+    return `${p.x},${p.y},${p.z}`;
+  }
+
+  function renderDispatcher() {
+    const disp = findDispatcher();
+    const host = $('dispatcher-host');
+    const qBody = $('dispatch-queue-tbody');
+    const wBody = $('dispatch-workers-tbody');
+    const fBody = $('dispatch-fuelhelp-tbody');
+
+    if (!disp) {
+      host.textContent = '(no dispatcher online)';
+      qBody.innerHTML = '<tr><td colspan="7" class="small">no dispatcher node found in /api/devices — set config.dispatcher = true on one machine</td></tr>';
+      wBody.innerHTML = '<tr><td colspan="7" class="small">-</td></tr>';
+      fBody.innerHTML = '<tr><td colspan="4" class="small">-</td></tr>';
+      return;
+    }
+    host.textContent = `host: ${disp.id} (${disp.device.name || disp.device.role})`;
+
+    // Queue
+    const q = disp.snapshot.queue || {};
+    const ids = Object.keys(q).sort();
+    qBody.innerHTML = '';
+    if (ids.length === 0) {
+      qBody.innerHTML = '<tr><td colspan="7" class="small">(empty)</td></tr>';
+    } else {
+      for (const id of ids) {
+        const s = q[id];
+        const partsLabel = (s.parts_total && s.parts_total > 0)
+          ? `${s.parts_done || 0}/${s.parts_total}`
+          : '-';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="small mono">${escapeHtml(id)}</td>
+          <td>${escapeHtml(s.name || '-')}</td>
+          <td>${escapeHtml(s.state || '?')}</td>
+          <td>${fmtVol(s.volume)}</td>
+          <td>${partsLabel}</td>
+          <td>${s.parts_failed || 0}</td>
+          <td><button class="cancel-sel" data-id="${escapeHtml(id)}">cancel</button></td>
+        `;
+        qBody.appendChild(tr);
+      }
+      qBody.querySelectorAll('button.cancel-sel').forEach(b =>
+        b.addEventListener('click', async () => {
+          try {
+            await rpc(disp.id, { type: 'selection_cancel', id: b.dataset.id }, 4000);
+          } catch (e) {
+            logEvent('err', { who: 'dispatcher', body: 'cancel failed: ' + e.message });
+          }
+          refresh();
+        }));
+    }
+
+    // Workers
+    const ws = disp.snapshot.workers || {};
+    const wIds = Object.keys(ws).sort();
+    wBody.innerHTML = '';
+    if (wIds.length === 0) {
+      wBody.innerHTML = '<tr><td colspan="7" class="small">(no registered workers)</td></tr>';
+    } else {
+      for (const id of wIds) {
+        const w = ws[id];
+        let stateLbl = w.idle ? 'idle' : 'busy';
+        if (w.stranded) stateLbl = 'stranded';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(id)}</td>
+          <td>${escapeHtml(w.kind || '-')}</td>
+          <td>${stateLbl}</td>
+          <td>${w.fuel ?? '-'}</td>
+          <td>${w.coal ?? '-'}</td>
+          <td>${fmtPos(w.position)}</td>
+          <td>${w.home ? fmtPos(w.home) : '-'}</td>
+        `;
+        wBody.appendChild(tr);
+      }
+    }
+
+    // Fuel-help requests
+    const fh = disp.snapshot.fuel_help || {};
+    const fIds = Object.keys(fh);
+    fBody.innerHTML = '';
+    if (fIds.length === 0) {
+      fBody.innerHTML = '<tr><td colspan="4" class="small">(none)</td></tr>';
+    } else {
+      const now = Date.now();
+      for (const id of fIds) {
+        const e = fh[id];
+        const ageS = Math.floor((now - (e.ts || 0)) / 1000);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(id)}</td>
+          <td>${e.fuel ?? '-'}</td>
+          <td>${fmtPos(e.pos)}</td>
+          <td>${ageS}s</td>
+        `;
+        fBody.appendChild(tr);
+      }
+    }
+  }
+
   // ---- Routing ---------------------------------------------------------
 
   function showTab(name) {
@@ -1559,6 +1752,7 @@
     if (name === 'storage')  refreshStorage();
     if (name === 'redstone') renderRedstone();
     if (name === 'events')   refreshEvents();
+    if (name === 'dispatcher') renderDispatcher();
     if (name === 'pilot')    populatePilotTargets();
     // Persist active tab so refresh doesn't kick you back to Devices.
     try { localStorage.setItem('unison-tab', name); } catch (_) {}
