@@ -86,17 +86,9 @@ end
 -- Draws a 2-pixel-tall horizontal strip on cell row `cy`, with the
 -- per-x top/bottom colours coming from the colour-fn(x).
 -- The render writes one half-block character per cell with fg=top, bg=bot.
-local HEX = {
-    [colors.white]      = "0", [colors.orange]    = "1",
-    [colors.magenta]    = "2", [colors.lightBlue] = "3",
-    [colors.yellow]     = "4", [colors.lime]      = "5",
-    [colors.pink]       = "6", [colors.gray]      = "7",
-    [colors.lightGray]  = "8", [colors.cyan]      = "9",
-    [colors.purple]     = "a", [colors.blue]      = "b",
-    [colors.brown]      = "c", [colors.green]     = "d",
-    [colors.red]        = "e", [colors.black]     = "f",
-}
-local HALF_BLOCK = string.char(0x95)   -- "▀" upper-half block in CC font
+local fmt = dofile("/unison/lib/fmt.lua")
+local HEX = fmt.HEX
+local HALF_BLOCK = fmt.HALF_BLOCK
 
 local function drawStrip(cy, w, colourFn)
     local t = term.current()

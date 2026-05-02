@@ -42,4 +42,35 @@ function M.fit(s, w, align)
     return s .. string.rep(" ", w - #s)
 end
 
+-- ------------------------------------------------------------------
+-- Colour ↔ blit hex char helpers. Mirrors the table CC's term.blit
+-- expects (palette index 0..15). Used by canvas / desktop / display
+-- — was duplicated three times before.
+-- ------------------------------------------------------------------
+
+M.HEX = {
+    [colors.white]      = "0", [colors.orange]    = "1",
+    [colors.magenta]    = "2", [colors.lightBlue] = "3",
+    [colors.yellow]     = "4", [colors.lime]      = "5",
+    [colors.pink]       = "6", [colors.gray]      = "7",
+    [colors.lightGray]  = "8", [colors.cyan]      = "9",
+    [colors.purple]     = "a", [colors.blue]      = "b",
+    [colors.brown]      = "c", [colors.green]     = "d",
+    [colors.red]        = "e", [colors.black]     = "f",
+}
+
+-- Reverse map: blit char → colour bit. Built lazily.
+local _BIT_FROM_HEX
+local function ensureBitMap()
+    if _BIT_FROM_HEX then return end
+    _BIT_FROM_HEX = {}
+    for col, ch in pairs(M.HEX) do _BIT_FROM_HEX[ch] = col end
+end
+
+function M.colorHex(c) return M.HEX[c] or "f" end
+function M.hexColor(h) ensureBitMap(); return _BIT_FROM_HEX[h] or colors.black end
+
+-- Half-block character used for 2-px-tall pixel art via blit.
+M.HALF_BLOCK = string.char(0x95)   -- "▀"
+
 return M

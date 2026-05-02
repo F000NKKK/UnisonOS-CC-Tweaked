@@ -15,4 +15,6 @@ return {
     scrollback  = dofile("/unison/lib/scrollback.lua"),
     turtle      = dofile("/unison/lib/turtle.lua"),
     atlas       = dofile("/unison/lib/atlas.lua"),
+    position    = dofile("/unison/lib/position.lua"),
+    busy        = dofile("/unison/lib/busy.lua"),
 }

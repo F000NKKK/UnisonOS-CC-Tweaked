@@ -74,20 +74,9 @@ end
 
 local Sub = {}; Sub.__index = Sub
 
-local HALF_BLOCK = string.char(0x95)   -- "▀" upper-half block in CC font
-
-local HEX = {
-    [colors.white]      = "0", [colors.orange]    = "1",
-    [colors.magenta]    = "2", [colors.lightBlue] = "3",
-    [colors.yellow]     = "4", [colors.lime]      = "5",
-    [colors.pink]       = "6", [colors.gray]      = "7",
-    [colors.lightGray]  = "8", [colors.cyan]      = "9",
-    [colors.purple]     = "a", [colors.blue]      = "b",
-    [colors.brown]      = "c", [colors.green]     = "d",
-    [colors.red]        = "e", [colors.black]     = "f",
-}
-
-local function colorHex(c) return HEX[c] or "f" end
+local fmt = dofile("/unison/lib/fmt.lua")
+local HALF_BLOCK = fmt.HALF_BLOCK
+local function colorHex(c) return fmt.colorHex(c) end
 
 function M.subpixel(target)
     target = target or term.current()
