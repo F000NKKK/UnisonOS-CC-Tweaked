@@ -49,4 +49,19 @@ return {
         storage_inventories = {},
         redstone_outputs = {},
     },
+
+    -- Dispatcher: set on exactly ONE node in the fleet (typically the
+    -- master PC). The dispatcher service then matches queued mining
+    -- selections to idle worker turtles. Other nodes leave this nil.
+    dispatcher = false,
+
+    -- Workers (turtles) point at the dispatcher's device id so they
+    -- know who to send worker_register / worker_idle / mine_done to.
+    -- The surveyor pocket app uses the same id to ship selection_queue.
+    -- dispatcher_id = "12",
+
+    -- Free-form role tag the dispatcher matches against when assigning
+    -- jobs. Common values: "mining", "farming", "lumber". A turtle
+    -- with no kind is treated as "any".
+    -- kind = "mining",
 }

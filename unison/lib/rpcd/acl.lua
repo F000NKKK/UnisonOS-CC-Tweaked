@@ -83,6 +83,10 @@ function M.replyTypeFor(msgType)
     if msgType:match("^patrol_") then return "patrol_reply" end
     if msgType:match("^redstone_") then return "redstone_reply" end
     if msgType:match("^home_") then return "home_reply" end
+    if msgType:match("^selection_") then return "selection_reply" end
+    if msgType:match("^worker_") then return "worker_reply" end
+    if msgType == "mine_done" then return "mine_done_reply" end
+    if msgType == "mine_assign" or msgType == "mine_abort" then return "mine_reply" end
     return nil
 end
 
