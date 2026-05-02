@@ -18,12 +18,21 @@ local function getClient()
     return dofile("/unison/rpc/client.lua")
 end
 
+-- Use rawget so a deserialised table with a hostile or cyclic
+-- metatable can't trigger "loop in gettable" — the bus payload is
+-- plain JSON and shouldn't have metatables, but we've seen it
+-- happen in the wild and want to fail gracefully.
+local function rg(t, k)
+    if type(t) ~= "table" then return nil end
+    return rawget(t, k)
+end
+
 local function normalizeDevices(raw)
     if type(raw) ~= "table" then return {} end
     local out = {}
     for k, d in pairs(raw) do
         if type(d) == "table" then
-            local id = d.id or k
+            local id = rg(d, "id") or k
             out[tostring(id)] = d
         end
     end
@@ -31,18 +40,18 @@ local function normalizeDevices(raw)
 end
 
 local function extractPosition(device)
-    local m = device and device.metrics
-    local p = m and m.position
+    local m = rg(device, "metrics")
+    local p = rg(m, "position")
     if type(p) ~= "table" then return nil end
 
-    local x = iRound(p.x or p[1])
-    local y = iRound(p.y or p[2])
-    local z = iRound(p.z or p[3])
+    local x = iRound(rg(p, "x") or rg(p, 1))
+    local y = iRound(rg(p, "y") or rg(p, 2))
+    local z = iRound(rg(p, "z") or rg(p, 3))
     if not (x and y and z) then return nil end
 
     return {
         x = x, y = y, z = z,
-        source = m.position_source or "http",
+        source = rg(m, "position_source") or "http",
     }
 end
 
@@ -51,7 +60,7 @@ local function findDevice(devices, idOrName)
     local key = tostring(idOrName)
     if devices[key] then return key, devices[key] end
     for id, d in pairs(devices) do
-        if tostring(d.name or "") == key then return id, d end
+        if tostring(rg(d, "name") or "") == key then return id, d end
     end
     return nil
 end
@@ -85,20 +94,26 @@ function M.locate(target, opts)
     end
 
     local client = getClient()
-    local devicesRaw, err = client.devices()
+    local okDev, devicesRaw, err = pcall(client.devices)
+    if not okDev then return nil, "devices: " .. tostring(devicesRaw) end
     if not devicesRaw then return nil, "devices: " .. tostring(err) end
-    local devices = normalizeDevices(devicesRaw)
+
+    local okN, devices = pcall(normalizeDevices, devicesRaw)
+    if not okN then return nil, "devices: " .. tostring(devices) end
 
     local id, dev
     if isSelf then
         id = tostring(os.getComputerID())
         dev = devices[id]
     else
-        id, dev = findDevice(devices, target)
+        local okF, fid, fdev = pcall(findDevice, devices, target)
+        if not okF then return nil, "devices: " .. tostring(fid) end
+        id, dev = fid, fdev
     end
     if not dev then return nil, "device not found: " .. tostring(target or "self") end
 
-    local pos = extractPosition(dev)
+    local okP, pos = pcall(extractPosition, dev)
+    if not okP then return nil, "metrics: " .. tostring(pos) end
     if not pos then return nil, "device has no position metrics: " .. tostring(id) end
     return pos.x, pos.y, pos.z, pos.source
 end
@@ -108,20 +123,22 @@ function M.devices(opts)
     opts = opts or {}
     local includeNoPos = opts.include_without_position == true
     local client = getClient()
-    local devicesRaw, err = client.devices()
+    local okDev, devicesRaw, err = pcall(client.devices)
+    if not okDev then return nil, "devices: " .. tostring(devicesRaw) end
     if not devicesRaw then return nil, "devices: " .. tostring(err) end
-    local devices = normalizeDevices(devicesRaw)
+    local okN, devices = pcall(normalizeDevices, devicesRaw)
+    if not okN then return nil, "devices: " .. tostring(devices) end
 
     local out = {}
     for id, d in pairs(devices) do
-        local pos = extractPosition(d)
-        if pos or includeNoPos then
+        local okP, pos = pcall(extractPosition, d)
+        if okP and (pos or includeNoPos) then
             out[#out + 1] = {
                 id = tostring(id),
-                name = d.name,
-                role = d.role,
-                version = d.version,
-                last_seen = d.last_seen,
+                name = rg(d, "name"),
+                role = rg(d, "role"),
+                version = rg(d, "version"),
+                last_seen = rg(d, "last_seen"),
                 x = pos and pos.x or nil,
                 y = pos and pos.y or nil,
                 z = pos and pos.z or nil,
