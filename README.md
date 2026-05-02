@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.29.0)
+## Status (current: 0.30.0)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -28,6 +28,7 @@ events, A* pathfinding) so the cluster behaves as one machine.
 | 16    | Dispatcher service + mine worker daemon + auto-park         | done   |
 | 17    | Parallel sector mining (split volume across N workers)      | done   |
 | 18    | Universal fuel-help courier protocol (any turtle)           | done   |
+| 19    | Dispatcher dashboard tab (queue / workers / fuel-help)      | done   |
 
 ## Quick install
 
@@ -420,6 +421,7 @@ up from `/unison/state/api_token`).
 | Map        | Top-down world map with device positions AND atlas-block overlay (ores/chests as colored dots). Drag to pan, wheel to zoom. |
 | Events     | Live activity feed: every dig / move / job_start / job_done streamed from `/api/atlas/events`. |
 | Cron       | Per-device cron units: list / add / run / rm.             |
+| Dispatcher | Live queue (with parts progress + Cancel), workers (fuel/coal/position/home/stranded), fuel-help requests. Reads `metrics.dispatcher` from the dispatcher node's heartbeat. |
 | Logs       | Activity log + command bar with ↑/↓ history.              |
 
 QoL:
@@ -499,8 +501,8 @@ device shows up in `devices` and is reachable by its `os.getComputerID()`:
 ```
 [mc-pc /]$ devices
 ID           ROLE       VER     SEEN  NAME
-0            computer   0.29.0  2s    computer-0
-3            turtle     0.29.0  1s    turtle-3
+0            computer   0.30.0  2s    computer-0
+3            turtle     0.30.0  1s    turtle-3
 ```
 
 Send a JSON message:
