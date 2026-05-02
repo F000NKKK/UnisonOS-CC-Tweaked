@@ -88,6 +88,10 @@ function M.replyTypeFor(msgType)
     if msgType == "mine_done" then return "mine_done_reply" end
     if msgType == "mine_assign" or msgType == "mine_abort" then return "mine_reply" end
     if msgType == "dispatcher_announce" then return nil end  -- fire-and-forget
+    if msgType == "fuel_help_request" or msgType == "fuel_help_clear" then
+        return "fuel_reply"
+    end
+    if msgType == "fuel_courier" then return "fuel_courier_reply" end
     return nil
 end
 

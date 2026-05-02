@@ -3,9 +3,9 @@
   "updated_at": "2026-05-02",
   "packages": {
     "mine": {
-      "latest": "3.0.2",
-      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.5.1", "1.5.2", "2.0.0", "2.1.0", "2.1.1", "2.1.2", "2.2.0", "2.2.1", "2.3.0", "2.3.1", "2.3.2", "2.4.0", "2.5.0", "2.5.1", "3.0.0", "3.0.1", "3.0.2"],
-      "description": "Sector miner + dispatcher worker daemon with GPS auto-parking and broadcast discovery",
+      "latest": "3.0.3",
+      "versions": ["1.0.0", "1.0.1", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.5.1", "1.5.2", "2.0.0", "2.1.0", "2.1.1", "2.1.2", "2.2.0", "2.2.1", "2.3.0", "2.3.1", "2.3.2", "2.4.0", "2.5.0", "2.5.1", "3.0.0", "3.0.1", "3.0.2", "3.0.3"],
+      "description": "Sector miner + worker daemon. Auto-home, slot blacklist, fuel-help courier protocol",
       "author": "F000NKKK",
       "roles": ["turtle"],
       "path": "packages/mine"
@@ -75,9 +75,9 @@
       "path": "packages/scanner"
     },
     "surveyor": {
-      "latest": "1.2.0",
-      "versions": ["1.0.0", "1.1.0", "1.2.0"],
-      "description": "Pocket-friendly 3D mining selection editor (WorldEdit-style, phone form factor)",
+      "latest": "1.3.0",
+      "versions": ["1.0.0", "1.1.0", "1.2.0", "1.3.0"],
+      "description": "Pocket-friendly 3D mining selection editor: parallel-mining progress per sector",
       "author": "F000NKKK",
       "roles": ["any"],
       "path": "packages/surveyor"

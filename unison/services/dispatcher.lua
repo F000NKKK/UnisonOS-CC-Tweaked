@@ -24,6 +24,9 @@ local STATE_FILE    = "/unison/state/dispatcher.json"
 local TICK_S        = 5
 local ANNOUNCE_S    = 30
 local WORKER_STALE_MS = 60 * 1000
+local MAX_RETRIES   = 3                    -- per-slice retry count before giving up
+local FUEL_SAFETY   = 1.5                  -- multiplier on estimated required fuel
+local FUEL_FLOOR    = 200                  -- minimum fuel buffer regardless of distance
 
 ----------------------------------------------------------------------
 -- Persistent state
@@ -32,7 +35,8 @@ local WORKER_STALE_MS = 60 * 1000
 local state = {
     queue       = {},  -- id → selection (top-level + sub-selections)
     assignments = {},  -- selectionId → workerId
-    workers     = {},  -- workerId → {kind, idle, last_seen, position, fuel, home}
+    workers     = {},  -- workerId → {kind, idle, last_seen, position, fuel, home, stranded}
+    fuel_help   = {},  -- workerId → {pos, fuel, ts} entries needing rescue
 }
 
 local function nowMs() return os.epoch and os.epoch("utc") or 0 end
@@ -62,6 +66,7 @@ local function persist()
         queue       = state.queue,
         assignments = state.assignments,
         workers     = state.workers,
+        fuel_help   = state.fuel_help,
     })
 end
 
@@ -71,6 +76,7 @@ local function restore()
     state.queue       = t.queue       or {}
     state.assignments = t.assignments or {}
     state.workers     = t.workers     or {}
+    state.fuel_help   = t.fuel_help   or {}
 end
 
 ----------------------------------------------------------------------
@@ -94,9 +100,26 @@ local function manhattan(a, b)
     return math.abs(a.x - b.x) + math.abs(a.y - b.y) + math.abs(a.z - b.z)
 end
 
--- Returns list of {id, dist} for all idle, non-stale, unassigned workers
--- whose kind matches "mining" or "any". Sorted closest-to-point first.
-local function idleWorkers(nearPoint)
+-- Estimate fuel required for a worker at fromPos to mine a slice
+-- (volume = dx*dy*dz blocks, ~1 fuel per block dug + travel) and
+-- return to its home. Conservative: uses manhattan distance and
+-- a safety multiplier.
+local function estimateFuel(slice, fromPos, homePos)
+    local dx = slice.max.x - slice.min.x + 1
+    local dy = slice.max.y - slice.min.y + 1
+    local dz = slice.max.z - slice.min.z + 1
+    local volume = dx * dy * dz
+    local toCorner = manhattan(fromPos, slice.min)
+    local backHome = manhattan(slice.min, homePos)
+    if toCorner == math.huge then toCorner = 0 end
+    if backHome == math.huge then backHome = 0 end
+    return math.ceil((toCorner + volume + backHome) * FUEL_SAFETY) + FUEL_FLOOR
+end
+
+-- Returns list of {id, dist, fuel} for all idle, non-stale, unassigned
+-- workers whose kind matches "mining" or "any". Sorted closest first.
+-- If `requireFuel` is given, filters out workers below that estimate.
+local function idleWorkers(nearPoint, requireFuel)
     local taken = {}
     for _, wid in pairs(state.assignments) do taken[wid] = true end
 
@@ -104,8 +127,13 @@ local function idleWorkers(nearPoint)
     for id, w in pairs(state.workers) do
         if w.idle and not isStale(w)
            and (w.kind == "mining" or w.kind == "any")
-           and not taken[id] then
-            out[#out + 1] = { id = id, dist = manhattan(w.position, nearPoint) }
+           and not taken[id]
+           and (not requireFuel or (w.fuel and w.fuel >= requireFuel)) then
+            out[#out + 1] = {
+                id   = id,
+                dist = manhattan(w.position, nearPoint),
+                fuel = w.fuel or 0,
+            }
         end
     end
     table.sort(out, function(a, b) return a.dist < b.dist end)
@@ -170,12 +198,54 @@ local function dispatchMany(rpc, selId, sel)
         return
     end
 
+    -- First pass: rough fuel estimate for the WHOLE volume (worst case).
+    -- We'll re-estimate per slice once we know the split count.
     local workers = idleWorkers(vol.min)
     if #workers == 0 then return end   -- no workers yet; retry next tick
 
     local n      = #workers
     local slices = splitVolume(vol, n)
     n = #slices                        -- actual count (vol may be thin)
+
+    -- Second pass: filter workers by per-slice fuel requirement.
+    -- Each slice gets the closest-with-enough-fuel worker; workers
+    -- without enough fuel for ANY slice are skipped this tick (they'll
+    -- be picked up next tick after refueling).
+    local sliceFuel = {}
+    for i, sl in ipairs(slices) do
+        sliceFuel[i] = estimateFuel(sl,
+            workers[1] and state.workers[workers[1].id]
+                       and state.workers[workers[1].id].position or vol.min,
+            workers[1] and state.workers[workers[1].id]
+                       and (state.workers[workers[1].id].home or vol.min) or vol.min)
+    end
+    -- Re-pick per-slice candidates honoring fuel requirement.
+    local pickedWorkers = {}
+    local usedIds = {}
+    for i, sl in ipairs(slices) do
+        local cands = idleWorkers(sl.min, sliceFuel[i])
+        local chosen
+        for _, c in ipairs(cands) do
+            if not usedIds[c.id] then chosen = c; break end
+        end
+        pickedWorkers[i] = chosen     -- may be nil
+        if chosen then usedIds[chosen.id] = true end
+    end
+    -- Compact: drop slices that didn't get a worker this tick.
+    local liveSlices, liveWorkers = {}, {}
+    for i, sl in ipairs(slices) do
+        if pickedWorkers[i] then
+            liveSlices [#liveSlices  + 1] = sl
+            liveWorkers[#liveWorkers + 1] = pickedWorkers[i]
+        end
+    end
+    if #liveSlices == 0 then
+        log.warn("dispatcher", "no workers with sufficient fuel for " .. selId)
+        return
+    end
+    slices  = liveSlices
+    workers = liveWorkers
+    n       = #slices
 
     sel.state       = "in_progress"
     sel.parts_total = n
@@ -265,10 +335,44 @@ local function tick()
     local rpc = unison and unison.rpc
     if not rpc then return end
 
+    -- Top-level queued selections: split + assign.
     for selId, sel in pairs(state.queue) do
         if (sel.state == "queued" or sel.state == "draft")
            and not sel.parent_id then
             dispatchMany(rpc, selId, sel)
+        end
+    end
+
+    -- Sub-selections re-queued for retry: try a fresh assignment.
+    for subId, sub in pairs(state.queue) do
+        if sub.parent_id and sub.state == "queued" then
+            local cands = idleWorkers(sub.volume.min,
+                estimateFuel(sub.volume,
+                    sub.volume.min,
+                    sub.volume.min))
+            local pick = cands[1]
+            if pick then
+                state.assignments[subId] = pick.id
+                state.workers[pick.id].idle = false
+                sub.state = "in_progress"
+                local ok = pcall(rpc.send, pick.id, {
+                    type         = "mine_assign",
+                    selection_id = subId,
+                    volume       = sub.volume,
+                    name         = sub.name,
+                    return_home  = true,
+                })
+                if not ok then
+                    sub.state = "queued"
+                    state.assignments[subId] = nil
+                    state.workers[pick.id].idle = true
+                else
+                    log.info("dispatcher", string.format(
+                        "retry %s → worker %s (attempt %d)",
+                        subId, pick.id, sub.retries or 1))
+                end
+                persist()
+            end
         end
     end
 end
@@ -373,7 +477,7 @@ local function installHandlers()
                           selections = out, workers = state.workers })
     end)
 
-    -- worker_register { kind, position, fuel, home, capabilities }
+    -- worker_register { kind, position, fuel, coal?, home, capabilities }
     rpc.subscribe("worker_register", function(msg, env)
         local id = tostring(env.from or msg.from or "?")
         touchWorker(id, {
@@ -381,8 +485,10 @@ local function installHandlers()
             idle         = msg.idle ~= false,
             position     = msg.position,
             fuel         = msg.fuel,
+            coal         = msg.coal,
             home         = msg.home,
             capabilities = msg.capabilities,
+            stranded     = nil,
         })
         persist()
         log.info("dispatcher", "worker registered: " .. id ..
@@ -396,6 +502,7 @@ local function installHandlers()
             idle     = true,
             position = msg.position,
             fuel     = msg.fuel,
+            coal     = msg.coal,
         })
         rpc.reply(env, { type = "worker_reply", ok = true })
     end)
@@ -406,6 +513,7 @@ local function installHandlers()
             idle     = false,
             position = msg.position,
             fuel     = msg.fuel,
+            coal     = msg.coal,
         })
         rpc.reply(env, { type = "worker_reply", ok = true })
     end)
@@ -415,25 +523,114 @@ local function installHandlers()
         local id  = msg.selection_id
         local sel = id and state.queue[id]
 
-        if sel then
-            sel.state = msg.ok and "done" or "failed"
-            sel.error = msg.err
-
-            if sel.parent_id then
-                onParentPartDone(sel.parent_id, msg.ok)
-            end
-        end
-
         local wid = state.assignments[id]
         state.assignments[id] = nil
         if wid and state.workers[wid] then
             state.workers[wid].idle = true
         end
 
+        if sel then
+            if msg.ok then
+                sel.state = "done"
+                sel.error = nil
+                if sel.parent_id then
+                    onParentPartDone(sel.parent_id, true)
+                end
+            else
+                -- Failure: maybe retry. We bump retries and re-queue
+                -- if under the cap; otherwise mark failed.
+                sel.retries = (sel.retries or 0) + 1
+                sel.error   = msg.err
+                if sel.retries < MAX_RETRIES and sel.parent_id then
+                    sel.state = "queued"
+                    log.warn("dispatcher", string.format(
+                        "mine_done %s failed (%s); retry %d/%d",
+                        tostring(id), tostring(msg.err),
+                        sel.retries, MAX_RETRIES))
+                else
+                    sel.state = "failed"
+                    if sel.parent_id then
+                        onParentPartDone(sel.parent_id, false)
+                    end
+                    log.warn("dispatcher", "mine_done " .. tostring(id) ..
+                        " failed permanently: " .. tostring(msg.err))
+                end
+            end
+        end
+
         persist()
         log.info("dispatcher", "mine_done " .. tostring(id) ..
             " ok=" .. tostring(msg.ok))
         rpc.reply(env, { type = "mine_done_reply", ok = true })
+    end)
+
+    -- fuel_help_request { fuel, position } — worker is stranded with
+    -- no coal and no chest reserves. We log it, mark the worker
+    -- "stranded", and try to dispatch a courier (idle worker carrying
+    -- coal). If no courier is available the player can manually
+    -- deliver via the `fuel deliver` shell command.
+    rpc.subscribe("fuel_help_request", function(msg, env)
+        local id = tostring(env.from or msg.from or "?")
+        local worker = state.workers[id]
+        if worker then
+            worker.stranded = true
+            worker.fuel     = msg.fuel or worker.fuel
+            worker.position = msg.position or worker.position
+        end
+        state.fuel_help[id] = {
+            pos  = msg.position, fuel = msg.fuel or 0,
+            ts   = nowMs(),
+        }
+        persist()
+        log.warn("dispatcher", "fuel_help_request from " .. id ..
+            " fuel=" .. tostring(msg.fuel) ..
+            " pos=" .. textutils.serialize(msg.position or {}))
+
+        -- Try to dispatch an automatic courier: ANY idle turtle with
+        -- coal in inventory and enough fuel for the round trip — no
+        -- kind filter (fuel-help is universal, not mining-specific).
+        local sent = false
+        for cid, cw in pairs(state.workers) do
+            if cid ~= id and cw.idle and not isStale(cw)
+               and (cw.coal or 0) >= 16
+               and cw.position and msg.position
+               and (cw.fuel or 0) >= manhattan(cw.position, msg.position) * 2 + FUEL_FLOOR then
+                pcall(rpc.send, cid, {
+                    type        = "fuel_courier",
+                    target_id   = id,
+                    target_pos  = msg.position,
+                    amount      = 32,
+                })
+                cw.idle = false
+                log.info("dispatcher", "auto-courier " .. cid .. " → " .. id)
+                sent = true
+                break
+            end
+        end
+        -- Fallback: if no registered worker fits (e.g. no mining
+        -- workers, or all are out of coal), broadcast to ALL turtles.
+        -- Their lib.fuel service evaluates locally and only the
+        -- first one with coal+fuel will follow through.
+        if not sent and rpc.broadcast and msg.position then
+            pcall(rpc.broadcast, {
+                type        = "fuel_courier",
+                target_id   = id,
+                target_pos  = msg.position,
+                amount      = 32,
+            })
+            log.info("dispatcher", "broadcast fuel_courier (fallback) for " .. id)
+        end
+        rpc.reply(env, { type = "fuel_reply", ok = true })
+    end)
+
+    -- fuel_help_clear — worker self-rescued (got coal) so we drop
+    -- the help entry.
+    rpc.subscribe("fuel_help_clear", function(msg, env)
+        local id = tostring(env.from or msg.from or "?")
+        state.fuel_help[id] = nil
+        if state.workers[id] then state.workers[id].stranded = nil end
+        persist()
+        rpc.reply(env, { type = "fuel_reply", ok = true })
     end)
 end
 

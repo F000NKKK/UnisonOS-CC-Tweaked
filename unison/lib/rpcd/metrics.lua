@@ -54,6 +54,12 @@ local function turtleStats(metrics)
         if turtle.getItemCount(i) > 0 then used = used + 1 end
     end
     metrics.inventory_used = used
+    -- Coal count: any turtle may serve as a fuel courier, so the
+    -- dispatcher's selector reads metrics.coal for ALL turtles.
+    local fuelLib = unison and unison.lib and unison.lib.fuel
+    if fuelLib and fuelLib.coalCount then
+        metrics.coal = fuelLib.coalCount()
+    end
 end
 
 local function redstoneIO(metrics)
