@@ -191,6 +191,7 @@
   <h1>UnisonOS Console</h1>
   <span class="status"><span class="ws-led" id="ws-led"></span><span id="ws-state">disconnected</span></span>
   <span class="status" id="conn-status">checking…</span>
+  <span class="status">world: <input id="world-input" style="width:90px;background:#1c2330;color:var(--fg);border:1px solid #444;padding:1px 4px;font-family:inherit;font-size:inherit" placeholder="default" /></span>
   <div class="right">
     <span class="small" id="device-count"></span>
     <button id="bulk-update-os" class="primary" title="exec 'upm upgrade -y' on every device">update OS all</button>
@@ -571,11 +572,21 @@
   }
   function hideAuth() { $('auth-overlay').hidden = true; }
 
+  function currentWorldId() {
+    return localStorage.getItem('unison.world_id') || 'default';
+  }
+  function setWorldId(w) {
+    if (!w || w === 'default') localStorage.removeItem('unison.world_id');
+    else localStorage.setItem('unison.world_id', w);
+    location.reload();
+  }
+
   async function api(path, opts) {
     if (!cfg || !cfg.base) throw new Error('not connected');
     opts = opts || {};
     const headers = opts.headers || {};
     if (cfg && cfg.token) headers['Authorization'] = 'Bearer ' + cfg.token;
+    headers['X-World-Id'] = currentWorldId();
     if (opts.body && typeof opts.body !== 'string') {
       headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(opts.body);
@@ -610,7 +621,8 @@
     ws.onopen = () => {
       ws.send(JSON.stringify({
         type: 'auth', id: myId, token: (cfg && cfg.token) || '',
-        role: 'console', name: 'web-console', version: 'dashboard'
+        role: 'console', name: 'web-console', version: 'dashboard',
+        world_id: currentWorldId(),
       }));
     };
     ws.onmessage = (ev) => {
@@ -1782,6 +1794,14 @@
   function start() {
     cfg = loadCfg();
     if (!cfg) { showAuth(); return; }
+    // Wire world picker — reload on commit so the WS reconnects
+    // with the new world_id and every API call switches namespace.
+    const wi = $('world-input');
+    wi.value = currentWorldId();
+    wi.addEventListener('change', () => setWorldId(wi.value.trim()));
+    wi.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') setWorldId(wi.value.trim());
+    });
     refresh();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, POLL_MS);
