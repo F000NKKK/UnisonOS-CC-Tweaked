@@ -25,9 +25,11 @@ local GPSNET_STATE = "/unison/state/gpsnet.lua"
 local M = {}
 
 local function isHostable()
-    if turtle then return false, "turtle" end
-    if pocket then return false, "pocket" end
-    if not gps then return false, "no gps API" end
+    -- rawget bypasses any cyclic __index on _G that some packs leave
+    -- behind ('loop in gettable' on absent globals like pocket).
+    if rawget(_G, "turtle") then return false, "turtle" end
+    if rawget(_G, "pocket") then return false, "pocket" end
+    if not rawget(_G, "gps") then return false, "no gps API" end
     return true
 end
 

@@ -61,8 +61,10 @@ end
 local function locateHere(timeout)
     timeout = tonumber(timeout) or 2
     if gps then
-        local x, y, z = gps.locate(timeout)
-        if x then return iRound(x), iRound(y), iRound(z), "gps" end
+        -- pcall to swallow any /rom/apis/gps.lua panics ("loop in
+        -- gettable") originating in poisoned _ENV envs.
+        local ok, x, y, z = pcall(gps.locate, timeout)
+        if ok and x then return iRound(x), iRound(y), iRound(z), "gps" end
     end
     local x, y, z, srcOrErr = gpsLib.locate("self", { http_only = true })
     if x then return x, y, z, srcOrErr or "http" end
@@ -83,8 +85,10 @@ local function printStatus()
     end
 
     if gps then
-        local x, y, z = gps.locate(1)
-        if x then
+        local ok, x, y, z = pcall(gps.locate, 1)
+        if not ok then
+            print("local gps: PANIC — " .. tostring(x))
+        elseif x then
             print(string.format("local gps: %d,%d,%d", iRound(x), iRound(y), iRound(z)))
         else
             print("local gps: unavailable")
