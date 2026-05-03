@@ -94,13 +94,18 @@ end
 
 local function pollLoop()
     while true do
-        if not activeWs then
-            local resp, err = client.poll()
-            if resp and type(resp.messages) == "table" then
-                for _, env in ipairs(resp.messages) do dispatch(env) end
-            elseif err then
-                log.debug("rpcd", "poll error: " .. tostring(err))
+        local ok, err = pcall(function()
+            if not activeWs then
+                local resp, e = client.poll()
+                if resp and type(resp.messages) == "table" then
+                    for _, env in ipairs(resp.messages) do dispatch(env) end
+                elseif e then
+                    log.debug("rpcd", "poll error: " .. tostring(e))
+                end
             end
+        end)
+        if not ok then
+            log.warn("rpcd", "poll loop crashed: " .. tostring(err))
         end
         sleep(POLL_INTERVAL)
     end
@@ -163,9 +168,12 @@ local function wsLoop()
             while true do
                 local rok, raw = pcall(ws.receive)
                 if not rok or not raw then break end
-                local msg = textutils.unserializeJSON(raw)
-                if msg and msg.type == "message" and msg.envelope then
-                    dispatch(msg.envelope)
+                local okJ, msg = pcall(textutils.unserializeJSON, raw)
+                if okJ and msg and msg.type == "message" and msg.envelope then
+                    local okD, derr = pcall(dispatch, msg.envelope)
+                    if not okD then
+                        log.warn("rpcd", "ws dispatch crash: " .. tostring(derr))
+                    end
                 end
                 -- Yield AFTER dispatch so any reply ws.send has time to
                 -- drain CC's per-socket pending queue before we read again.
