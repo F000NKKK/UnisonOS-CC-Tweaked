@@ -95,7 +95,11 @@ function M.locate(target, opts)
 
     if isSelf and gps and not opts.http_only then
         local now = os.epoch and (os.epoch("utc") / 1000) or os.clock()
-        if now >= noGpsUntil then
+        -- opts.force = true bypasses the no-fix cache. Used by callers
+        -- that need TWO fresh GPS reads back-to-back (e.g. nav.lib's
+        -- facing probe — bus-cached coordinates wouldn't change between
+        -- reads and the probe would report a bogus dx=0 dz=0).
+        if opts.force or now >= noGpsUntil then
             -- pcall the vanilla CC API: in some worlds it panics with
             -- "loop in gettable" out of /rom/apis/gps.lua, presumably
             -- because _ENV.__index has been polluted by a buggy peer

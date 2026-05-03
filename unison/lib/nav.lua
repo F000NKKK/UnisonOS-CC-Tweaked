@@ -47,6 +47,26 @@ local function gpsPos()
              src = src }
 end
 
+-- Forced fresh fix from vanilla CC GPS, bypassing the no-fix cache.
+-- The facing probe needs TWO reads that reflect actual movement; a
+-- bus-cached coordinate (heartbeat-updated every 10 s) would lie about
+-- the second one and produce dx=0 dz=0 for the probe.
+local function gpsPosFresh()
+    local L = unison and unison.lib
+    if not (L and L.gps) then return nil end
+    if L.gps.resetGpsCache then L.gps.resetGpsCache() end
+    local x, y, z, src = L.gps.locate("self", { timeout = 2, force = true })
+    if not x then return nil, "no gps fix" end
+    if src ~= "gps" then
+        return nil, "gps source is '" .. tostring(src) ..
+            "', need vanilla CC GPS for the facing probe"
+    end
+    return { x = math.floor(x + 0.5),
+             y = math.floor(y + 0.5),
+             z = math.floor(z + 0.5),
+             src = src }
+end
+
 M.position = gpsPos
 
 ----------------------------------------------------------------------
@@ -70,7 +90,8 @@ local function tryStepForward(opts)
 end
 
 local function probeFacing(opts)
-    local p1 = gpsPos(); if not p1 then return nil, "no gps fix" end
+    local p1, e1 = gpsPosFresh()
+    if not p1 then return nil, e1 or "no gps fix" end
 
     local ok, err = tryStepForward(opts)
     if not ok then
@@ -81,25 +102,35 @@ local function probeFacing(opts)
             turtle.turnRight(); turtle.turnRight()  -- restore facing
             return nil, "probe blocked both ways: " .. tostring(err)
         end
-        local p2 = gpsPos(); if not p2 then
+        local p2, e2 = gpsPosFresh()
+        if not p2 then
             turtle.back(); turtle.turnRight(); turtle.turnRight()
-            return nil, "no gps after probe"
+            return nil, "no gps after probe: " .. tostring(e2)
         end
         local dx = p2.x - p1.x; local dz = p2.z - p1.z
         -- We stepped while facing the OPPOSITE of original; flip back.
         turtle.back()
         turtle.turnRight(); turtle.turnRight()
+        if dx == 0 and dz == 0 then
+            return nil, "ambiguous probe: gps reported same coords " ..
+                "before/after a successful step (stale fix?)"
+        end
         for f, d in pairs(FACE_TO_DELTA) do
             if d.dx == -dx and d.dz == -dz then return f end
         end
-        return nil, "ambiguous probe"
+        return nil, "ambiguous probe (dx=" .. dx .. " dz=" .. dz .. ")"
     end
 
-    local p2 = gpsPos(); if not p2 then
-        turtle.back(); return nil, "no gps after probe"
+    local p2, e2 = gpsPosFresh()
+    if not p2 then
+        turtle.back(); return nil, "no gps after probe: " .. tostring(e2)
     end
     local dx = p2.x - p1.x; local dz = p2.z - p1.z
-    turtle.back()    -- restore exact position
+    turtle.back()
+    if dx == 0 and dz == 0 then
+        return nil, "ambiguous probe: gps reported same coords " ..
+            "before/after a successful step (stale fix?)"
+    end
     for f, d in pairs(FACE_TO_DELTA) do
         if d.dx == dx and d.dz == dz then return f end
     end

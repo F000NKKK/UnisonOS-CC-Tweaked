@@ -32,13 +32,13 @@
     "unison/lib/gdi/init.lua": "d8893ed74278c07c714be28da60efedd13abec78449d0d052096ce580e69d4e0",
     "unison/lib/gdi/shapes.lua": "db48a00f240b46d0d1824bf940db2a3050394d3a1e0b1b6bb4ccee81e6a58c51",
     "unison/lib/gdi/text.lua": "78f0efd65dece8332b1f8f5c7958e149ef2f5d55a29b6d0a6400572398bd6fc6",
-    "unison/lib/gps.lua": "c2293a8348bba01eb198ceffa8dcb0c86cb3a0faffa78e5ecfa787590597ebeb",
+    "unison/lib/gps.lua": "4a430056b65163072c71b6a03958a615bf0555297d4f0d3b2598e93669a3e7a7",
     "unison/lib/home.lua": "c8f8b441fc68c16ca40c4ffa54a2e09462bb8d539ae250396d14691ac434534d",
     "unison/lib/http.lua": "145e3f20245ad3fb862863c382414bdd904648d8e55cebd8e48fc8c94e01804d",
     "unison/lib/init.lua": "d4fdaa37342cb2090e8909900e401708b2a02e7171f3537cdd75a96619e9021e",
     "unison/lib/json.lua": "8334e5acde97e4c6e5c64d6ac34d038814c240092f19d998c869f020ec514617",
     "unison/lib/kvstore.lua": "e93d62687cb57300f1deacd0a4677ba7ad2ac9f8db0068c087d737cf3af51fc5",
-    "unison/lib/nav.lua": "280bf4a3b51969233f37926c5e6a39ef4e16d599c31032be64160cadb76630ed",
+    "unison/lib/nav.lua": "64c59e84e80d074220b47f34b970ecb732523e5a26e3208679c4498feefc664d",
     "unison/lib/path.lua": "28003f22ab184ca1a7fe22aa14316181cbba98b11f073a40b6b683f93186db61",
     "unison/lib/position.lua": "33632380347872d6a25b9faef8728ecc0ea836643c25f2ae79fb1bc3d5ed2972",
     "unison/lib/rpcd/acl.lua": "71949ec6128f2d76bb8a0a6c22e9d3142d9f301024830dcfe8caeffaa55c4abf",
@@ -284,5 +284,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.33.0"
+  "version": "0.33.1"
 }
