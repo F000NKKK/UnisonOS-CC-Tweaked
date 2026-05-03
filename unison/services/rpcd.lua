@@ -108,12 +108,24 @@ end
 
 local function heartbeatLoop()
     while true do
-        local m = Metrics.collect()
-        if activeWs then
-            client.wsHeartbeat(activeWs, m)
-        else
-            local _, err = client.heartbeat(m)
-            if err then log.debug("rpcd", "heartbeat error: " .. tostring(err)) end
+        local okM, m = pcall(Metrics.collect)
+        if not okM then
+            log.warn("rpcd", "metrics.collect crashed: " .. tostring(m))
+            -- Send a minimal heartbeat so the device still appears
+            -- live on the bus even when metrics are misbehaving.
+            m = { uptime = 0, role = unison and unison.role or nil,
+                  metrics_error = tostring(m) }
+        end
+        local okSend, err = pcall(function()
+            if activeWs then
+                client.wsHeartbeat(activeWs, m)
+            else
+                local _, e = client.heartbeat(m)
+                if e then log.debug("rpcd", "heartbeat error: " .. tostring(e)) end
+            end
+        end)
+        if not okSend then
+            log.warn("rpcd", "heartbeat send crashed: " .. tostring(err))
         end
         sleep(HEARTBEAT_INTERVAL)
     end

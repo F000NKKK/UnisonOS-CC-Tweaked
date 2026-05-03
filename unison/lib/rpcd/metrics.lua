@@ -174,33 +174,109 @@ function M.collect()
     end
     if kind then metrics.kind = tostring(kind) end
 
-    -- Dispatcher snapshot (only set on the dispatcher node). Lets the
-    -- web dashboard show queue + workers + fuel-help via /api/devices
-    -- without a dedicated endpoint.
+    -- Dispatcher snapshot (only set on the dispatcher node).
+    --
+    -- We deep-copy via JSON round-trip to strip any hidden metatables
+    -- and break potential cycles before the heartbeat serializer sees
+    -- the snapshot. Without this, a worker payload with a hostile
+    -- __index chain (we've seen them in the wild) would propagate the
+    -- 'loop in gettable' panic into rpcd's heartbeat loop.
     if unison and unison.dispatcher and unison.dispatcher.snapshot then
         local okSnap, snap = pcall(unison.dispatcher.snapshot)
         if okSnap and type(snap) == "table" then
-            -- Trim to just what the dashboard needs (avoid bloating the
-            -- heartbeat with the entire selection history).
             local qOut = {}
-            for id, sel in pairs(snap.queue or {}) do
-                if not sel.parent_id then
-                    qOut[id] = {
-                        id           = id,
-                        name         = sel.name,
-                        state        = sel.state,
-                        volume       = sel.volume,
-                        parts_total  = sel.parts_total,
-                        parts_done   = sel.parts_done,
-                        parts_failed = sel.parts_failed,
-                    }
+            local okQueue = pcall(function()
+                for id, sel in pairs(snap.queue or {}) do
+                    if not rawget(sel, "parent_id") then
+                        qOut[id] = {
+                            id           = id,
+                            name         = rawget(sel, "name"),
+                            state        = rawget(sel, "state"),
+                            volume       = rawget(sel, "volume"),
+                            parts_total  = rawget(sel, "parts_total"),
+                            parts_done   = rawget(sel, "parts_done"),
+                            parts_failed = rawget(sel, "parts_failed"),
+                        }
+                    end
                 end
+            end)
+            if not okQueue then qOut = {} end
+
+            -- Sanitise workers by reading only known scalar/object
+            -- fields via rawget — no pairs over arbitrary nested
+            -- structure here.
+            local function sanitiseHome(h)
+                if type(h) ~= "table" then return nil end
+                local ok, out = pcall(function()
+                    return {
+                        x        = rawget(h, "x"),
+                        y        = rawget(h, "y"),
+                        z        = rawget(h, "z"),
+                        facing   = rawget(h, "facing"),
+                        label    = rawget(h, "label"),
+                        explicit = rawget(h, "explicit"),
+                    }
+                end)
+                return ok and out or nil
             end
+            local function sanitisePos(p)
+                if type(p) ~= "table" then return nil end
+                local ok, out = pcall(function()
+                    return {
+                        x = rawget(p, "x"),
+                        y = rawget(p, "y"),
+                        z = rawget(p, "z"),
+                    }
+                end)
+                return ok and out or nil
+            end
+            local wOut = {}
+            local okW = pcall(function()
+                for wid, w in pairs(snap.workers or {}) do
+                    if type(w) == "table" then
+                        local okOne, entry = pcall(function()
+                            return {
+                                kind      = rawget(w, "kind"),
+                                idle      = rawget(w, "idle"),
+                                fuel      = rawget(w, "fuel"),
+                                coal      = rawget(w, "coal"),
+                                stranded  = rawget(w, "stranded"),
+                                last_seen = rawget(w, "last_seen"),
+                                position  = sanitisePos(rawget(w, "position")),
+                                home      = sanitiseHome(rawget(w, "home")),
+                            }
+                        end)
+                        if okOne then wOut[tostring(wid)] = entry end
+                    end
+                end
+            end)
+            if not okW then wOut = {} end
+
+            local aOut = {}
+            pcall(function()
+                for sid, wid in pairs(snap.assignments or {}) do
+                    aOut[tostring(sid)] = tostring(wid)
+                end
+            end)
+
+            local fhOut = {}
+            pcall(function()
+                for wid, e in pairs(snap.fuel_help or {}) do
+                    if type(e) == "table" then
+                        fhOut[tostring(wid)] = {
+                            pos  = sanitisePos(rawget(e, "pos")),
+                            fuel = rawget(e, "fuel"),
+                            ts   = rawget(e, "ts"),
+                        }
+                    end
+                end
+            end)
+
             metrics.dispatcher = {
                 queue       = qOut,
-                workers     = snap.workers or {},
-                assignments = snap.assignments or {},
-                fuel_help   = snap.fuel_help or {},
+                workers     = wOut,
+                assignments = aOut,
+                fuel_help   = fhOut,
             }
         end
     end
