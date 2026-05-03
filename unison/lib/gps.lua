@@ -96,8 +96,12 @@ function M.locate(target, opts)
     if isSelf and gps and not opts.http_only then
         local now = os.epoch and (os.epoch("utc") / 1000) or os.clock()
         if now >= noGpsUntil then
-            local x, y, z = gps.locate(tonumber(opts.timeout) or 1)
-            if x then
+            -- pcall the vanilla CC API: in some worlds it panics with
+            -- "loop in gettable" out of /rom/apis/gps.lua, presumably
+            -- because _ENV.__index has been polluted by a buggy peer
+            -- on the same modem channel. We fall back to bus locate.
+            local ok, x, y, z = pcall(gps.locate, tonumber(opts.timeout) or 1)
+            if ok and x then
                 return iRound(x), iRound(y), iRound(z), "gps"
             end
             -- Mark gps as unavailable for a while so we stop blocking.

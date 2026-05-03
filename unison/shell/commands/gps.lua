@@ -79,8 +79,15 @@ local function diagnose()
     if gpsLib.resetGpsCache then gpsLib.resetGpsCache() end
     local x, y, z, src
     if gps then
-        x, y, z = gps.locate(5, true)   -- second arg = debug print
-        if x then src = "gps" end
+        local ok, gx, gy, gz = pcall(gps.locate, 5, true)
+        if not ok then
+            print("  vanilla gps.locate: PANIC — " .. tostring(gx))
+            print("  (this usually means another peer poisoned _ENV;")
+            print("   reboot the device to clear it)")
+        else
+            x, y, z = gx, gy, gz
+            if x then src = "gps" end
+        end
     end
     if not x then
         print("  vanilla gps.locate: NO FIX")
@@ -157,7 +164,13 @@ local function testLocate(timeoutArg)
     if not gps then printError("no gps API"); return end
     if gpsLib.resetGpsCache then gpsLib.resetGpsCache() end
     ensureModemsOpen()
-    local x, y, z = gps.locate(timeout, true)
+    local ok, x, y, z = pcall(gps.locate, timeout, true)
+    if not ok then
+        printError("gps.locate panicked: " .. tostring(x))
+        print("Reboot the device — _ENV is poisoned. If it returns,")
+        print("a peer on the same wireless modem channel is the source.")
+        return
+    end
     if x then
         print(string.format("FIX: %d,%d,%d", x, y, z))
     else

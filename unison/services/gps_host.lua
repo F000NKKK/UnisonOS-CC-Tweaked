@@ -75,7 +75,11 @@ local function tryLocate(timeout)
     -- Reset the no-fix cache so we don't get stuck for NO_GPS_TTL seconds
     -- after another tower comes online.
     if lib_gps.resetGpsCache then lib_gps.resetGpsCache() end
-    local x, y, z, src = lib_gps.locate("self", { timeout = timeout or 1 })
+    local ok, x, y, z, src = pcall(lib_gps.locate, "self", { timeout = timeout or 1 })
+    if not ok then
+        log.warn("gps-host", "lib_gps.locate panicked: " .. tostring(x))
+        return nil
+    end
     if not x or src ~= "gps" then return nil end
     return { x = x, y = y, z = z, source = "network" }
 end

@@ -32,7 +32,7 @@
     "unison/lib/gdi/init.lua": "d8893ed74278c07c714be28da60efedd13abec78449d0d052096ce580e69d4e0",
     "unison/lib/gdi/shapes.lua": "db48a00f240b46d0d1824bf940db2a3050394d3a1e0b1b6bb4ccee81e6a58c51",
     "unison/lib/gdi/text.lua": "78f0efd65dece8332b1f8f5c7958e149ef2f5d55a29b6d0a6400572398bd6fc6",
-    "unison/lib/gps.lua": "d6b87a5220b91af3b7e1d560f27e51b5d2857a7f35662b2d65137e2a8e294600",
+    "unison/lib/gps.lua": "c2293a8348bba01eb198ceffa8dcb0c86cb3a0faffa78e5ecfa787590597ebeb",
     "unison/lib/home.lua": "c8f8b441fc68c16ca40c4ffa54a2e09462bb8d539ae250396d14691ac434534d",
     "unison/lib/http.lua": "145e3f20245ad3fb862863c382414bdd904648d8e55cebd8e48fc8c94e01804d",
     "unison/lib/init.lua": "d4fdaa37342cb2090e8909900e401708b2a02e7171f3537cdd75a96619e9021e",
@@ -74,7 +74,7 @@
     "unison/services/dispatcher.lua": "5daa89db4a75bf923011cb499e6c4ddd3ae82bd16f23c16ee0d3f033ff61fa4f",
     "unison/services/display.lua": "5b05a8ec098fd09330cbd3cd8823aa6630cb123da1e91cb109b95bb8c5cc6f26",
     "unison/services/fuel.lua": "b61615f890ec5d573c2623208f409e7d003adc4c5ce919e0e43b463273cb7194",
-    "unison/services/gps_host.lua": "91e8db7e9b09603750258443fef6873a1e39f509b7add867c58c161fbd3c2789",
+    "unison/services/gps_host.lua": "0f140b1282a674cd77dba6058340cd8e912fcfab60ab4d22483ab3d033773b4b",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
     "unison/services/rpcd.lua": "0c8d745d816ffda8c7c8b2bdcd907f5351d9e9d717d9b55d6db8a4390061c585",
     "unison/shell/commands/acl.lua": "ee35ff4c946354e6dec822e096ddf8bba5a61ede14a9ec2e93187c8a2ce498f5",
@@ -90,7 +90,7 @@
     "unison/shell/commands/echo.lua": "cb76a5ffab3acf5e3638d9f3e3fe802ee2e67d3ea29368eaff15f93d35bb7ed4",
     "unison/shell/commands/fuel.lua": "c5856183490a7087b182e56857673f2a3f5526c5e38319aeba0dbc9e3aa009f5",
     "unison/shell/commands/gps-tower.lua": "604f5459b4ed7d7e31aa8f5ba5474bc0e807939a394fe3a3f3796554e1610d45",
-    "unison/shell/commands/gps.lua": "5835b3e65be316edc2e5aa286d62583a1ae3576f2ad57a77d0ff138cc8ebee30",
+    "unison/shell/commands/gps.lua": "07e8a7a0464913792e92d6187a99207d066382d90c1da82cf0b15bf65cfaf589",
     "unison/shell/commands/gpsnet.lua": "79cac5b19943e9c8f51c47a6e73857f7a952356c867e724742db6dc6ad71a5ee",
     "unison/shell/commands/hardreset.lua": "189c4dc972a0f4b4e923e4c5900633b692a32b6269f6fd13bf119458c3ee286b",
     "unison/shell/commands/help.lua": "0488b36aa77e19caa57cb8f6f631934626cef305e98b2cc205da2d24e8b50fe7",
@@ -280,5 +280,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.30.3"
+  "version": "0.30.4"
 }
