@@ -90,7 +90,7 @@
     "unison/shell/commands/echo.lua": "cb76a5ffab3acf5e3638d9f3e3fe802ee2e67d3ea29368eaff15f93d35bb7ed4",
     "unison/shell/commands/fuel.lua": "c5856183490a7087b182e56857673f2a3f5526c5e38319aeba0dbc9e3aa009f5",
     "unison/shell/commands/gps-tower.lua": "604f5459b4ed7d7e31aa8f5ba5474bc0e807939a394fe3a3f3796554e1610d45",
-    "unison/shell/commands/gps.lua": "07e8a7a0464913792e92d6187a99207d066382d90c1da82cf0b15bf65cfaf589",
+    "unison/shell/commands/gps.lua": "7735f94b6e472f8b0c08e3c11af5021c0aa9c7e51be8b29a331c69938ab20830",
     "unison/shell/commands/gpsnet.lua": "79cac5b19943e9c8f51c47a6e73857f7a952356c867e724742db6dc6ad71a5ee",
     "unison/shell/commands/hardreset.lua": "189c4dc972a0f4b4e923e4c5900633b692a32b6269f6fd13bf119458c3ee286b",
     "unison/shell/commands/help.lua": "0488b36aa77e19caa57cb8f6f631934626cef305e98b2cc205da2d24e8b50fe7",
@@ -282,5 +282,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.31.1"
+  "version": "0.31.2"
 }

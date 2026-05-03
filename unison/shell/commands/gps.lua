@@ -39,11 +39,20 @@ local function ensureModemsOpen()
     return opened
 end
 
+-- Some peers / CC packs leave _G with a cyclic __index metatable:
+-- existing globals resolve fine, but reading a MISSING one (e.g.
+-- `pocket` on a turtle) infinite-loops the lookup ('loop in gettable').
+-- rawget bypasses the metatable entirely, so use it for any global
+-- that may be unset on this device.
+local function rgG(name)
+    return rawget(_G, name)
+end
+
 local function diagnose()
     print("=== GPS diagnostic ===")
     print("computer id: " .. tostring(os.getComputerID()))
-    print("turtle:      " .. tostring(turtle ~= nil)
-        .. "  pocket: " .. tostring(pocket ~= nil))
+    print("turtle:      " .. tostring(rgG("turtle") ~= nil)
+        .. "  pocket: " .. tostring(rgG("pocket") ~= nil))
 
     local modems = listModems()
     if #modems == 0 then
