@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.31.1)
+## Status (current: 0.31.4)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -309,14 +309,22 @@ The full edit history (p1/p2 sets, expansions, shifts) is preserved.
 ### Dispatcher service
 
 Enable the dispatcher on one machine (usually a stationary computer near
-the mine):
+the mine). Either via shell:
+
+```
+[computer-1 /]$ dispatcher enable
+dispatcher: enabled (state file written).
+dispatcher service restarted.
+```
+
+…or in `/unison/config.lua`:
 
 ```lua
--- /unison/config.lua
 dispatcher = true
 ```
 
-Then `service restart dispatcher` (or reboot). The dispatcher:
+The state-file toggle (`/unison/state/dispatcher-enabled.json`)
+overrides the config entry; `dispatcher disable` flips it back. The dispatcher:
 
 1. Watches the selection queue (via `selection_queue` RPC).
 2. Discovers idle `mine worker` turtles via their heartbeat (kind, fuel,

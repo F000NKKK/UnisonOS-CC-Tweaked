@@ -60,7 +60,7 @@
     "unison/rpc/client.lua": "235b1b2dc3959fa47ffd084ed7dc4d9b23b0fcc73319e70f0cb67c892bb1bd18",
     "unison/services.d/crond.lua": "ff3d717dfb37cb93411c1e252b4774a8098497e90e411e79d73296543fed06bb",
     "unison/services.d/disk-updater.lua": "08130159ed4505caa8d6460fda6d4869ea9af6dac0c685330ff202d7bb0f1aad",
-    "unison/services.d/dispatcher.lua": "90579e4d0411ce32f882a275517ddd61f07fe32286f456ba5052ecdba3a8c6f2",
+    "unison/services.d/dispatcher.lua": "436ea9dbb186c6b78609168e351915149a12a4307cd2e8dbbc37b72fe1991993",
     "unison/services.d/display.lua": "32086b1715c76b0ab8891227c0d29ee764bc55d4ece661ed765e785403f3d56d",
     "unison/services.d/fuel.lua": "3202f541d4a1e03b0911254327f3f9ad880d92e6347000762d902dbe97bc3ac5",
     "unison/services.d/gps-host.lua": "fe8b966fededbe3decf256206f2b84070b43e2166d4449d4dad1bf14f514c7f2",
@@ -86,7 +86,7 @@
     "unison/shell/commands/cron.lua": "fe74995bbeff7406d51de9a9a9194a5344778c4d6dad96c550715c9334d27136",
     "unison/shell/commands/desktop.lua": "f648766b62f2d91fd018895605d2df0c1c86996db2ddae64d2853a490b456c21",
     "unison/shell/commands/devices.lua": "02316ba654562503a33b836b37e2bd99672f08d19c281bafa2ca8623055817b9",
-    "unison/shell/commands/dispatcher.lua": "a5e4eba3754a4b8421c06a132d4626fe1d13423b60e4211d6514c045cb34c79c",
+    "unison/shell/commands/dispatcher.lua": "c542069605f3b5b5c657bf8310745c0fb068289a9d7ba5dbda08fc38cf4a49da",
     "unison/shell/commands/echo.lua": "cb76a5ffab3acf5e3638d9f3e3fe802ee2e67d3ea29368eaff15f93d35bb7ed4",
     "unison/shell/commands/fuel.lua": "c5856183490a7087b182e56857673f2a3f5526c5e38319aeba0dbc9e3aa009f5",
     "unison/shell/commands/gps-tower.lua": "604f5459b4ed7d7e31aa8f5ba5474bc0e807939a394fe3a3f3796554e1610d45",
@@ -282,5 +282,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.31.2"
+  "version": "0.31.4"
 }
