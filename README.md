@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.30.0)
+## Status (current: 0.31.0)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -29,6 +29,7 @@ events, A* pathfinding) so the cluster behaves as one machine.
 | 17    | Parallel sector mining (split volume across N workers)      | done   |
 | 18    | Universal fuel-help courier protocol (any turtle)           | done   |
 | 19    | Dispatcher dashboard tab (queue / workers / fuel-help)      | done   |
+| 20    | Cross-world isolation (X-World-Id namespacing on the bus)   | done   |
 
 ## Quick install
 
@@ -76,6 +77,10 @@ return {
     },
 
     master  = { secret = "CHANGE_ME" },
+
+    -- Cross-world isolation. If multiple MC worlds talk to the same bus,
+    -- give each a distinct id so devices don't see each other.
+    -- world_id = "alpha",
 
     -- Dispatcher: enable on one machine to orchestrate mine workers
     dispatcher = false,

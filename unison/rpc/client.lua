@@ -48,10 +48,22 @@ local function nodeId()
     return tostring(os.getComputerID())
 end
 
+-- World identifier — partitions the bus so devices in different MC
+-- worlds don't see each other. Set `world_id = "myworld"` in
+-- /unison/config.lua. Defaults to "default" so single-world setups
+-- keep working unchanged.
+local function worldId()
+    if unison and unison.config and unison.config.world_id then
+        return tostring(unison.config.world_id)
+    end
+    return "default"
+end
+
 local function buildHeaders()
     local h = {
         ["Content-Type"]  = "application/json",
         ["Cache-Control"] = "no-cache",
+        ["X-World-Id"]    = worldId(),
     }
     local token = loadToken()
     if token then h["Authorization"] = "Bearer " .. token end
@@ -159,6 +171,7 @@ function M.wsConnect()
         role = unison and unison.role,
         name = unison and unison.node,
         version = (UNISON and UNISON.version) or "?",
+        world_id = worldId(),
     })
     ws.send(hello)
     -- Wait briefly for the 'ready' frame.

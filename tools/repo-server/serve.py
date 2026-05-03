@@ -100,32 +100,67 @@ class Store:
                 changed = True
         return changed
 
-    def devices(self) -> dict:
+    def devices(self, world_id: str = "default") -> dict:
+        """Devices in the given world only (cross-world isolation)."""
+        with self.lock:
+            db = self._read(self.devices_path) or {}
+            if self._prune_stale(db):
+                self._write(self.devices_path, db)
+            out = {}
+            for k, v in db.items():
+                # Devices written before world_id was introduced default
+                # to "default" so legacy single-world setups keep working.
+                if (v.get("world_id") or "default") == world_id:
+                    out[k] = v
+            return out
+
+    def all_devices(self) -> dict:
+        """Raw device DB across all worlds. Internal use only."""
         with self.lock:
             db = self._read(self.devices_path) or {}
             if self._prune_stale(db):
                 self._write(self.devices_path, db)
             return db
 
-    def upsert_device(self, device_id: str, info: dict) -> dict:
+    def upsert_device(self, device_id: str, info: dict, world_id: str = "default") -> dict:
         with self.lock:
             db = self._read(self.devices_path) or {}
-            existing = db.get(device_id, {})
+            # Compose key with world prefix so id collisions across worlds
+            # (turtle 0 in world A vs turtle 0 in world B) are kept apart.
+            key = f"{world_id}::{device_id}" if world_id != "default" else device_id
+            existing = db.get(key, {})
             existing.update(info)
             existing["last_seen"] = _now_ms()
-            db[device_id] = existing
+            existing["world_id"] = world_id
+            existing["id"] = device_id
+            db[key] = existing
             self._write(self.devices_path, db)
             return existing
 
-    def queue_path(self, device_id: str) -> str:
-        safe = "".join(c for c in device_id if c.isalnum() or c in "-_.")
-        return os.path.join(self.queues_dir, safe + ".json")
+    def device_world(self, device_id: str) -> str:
+        """Return the world_id a device belongs to, or 'default' if unknown."""
+        with self.lock:
+            db = self._read(self.devices_path) or {}
+            for k, v in db.items():
+                if v.get("id") == device_id or k == device_id:
+                    return v.get("world_id") or "default"
+            return "default"
 
-    def push_message(self, device_id: str, msg: dict) -> dict:
+    def queue_path(self, device_id: str, world_id: str = "default") -> str:
+        # Shard queues by world too so a foreign-world client polling for
+        # device 0 cannot read device 0 messages from another world.
+        safe_id = "".join(c for c in device_id if c.isalnum() or c in "-_.")
+        safe_world = "".join(c for c in world_id if c.isalnum() or c in "-_.") or "default"
+        if safe_world == "default":
+            return os.path.join(self.queues_dir, safe_id + ".json")
+        return os.path.join(self.queues_dir, safe_world + "_" + safe_id + ".json")
+
+    def push_message(self, device_id: str, msg: dict, world_id: str = "default") -> dict:
         envelope = {
             "id": str(uuid.uuid4()),
             "ts": _now_ms(),
             "to": device_id,
+            "world_id": world_id,
             "msg": msg,
         }
         # Try real-time delivery first. If a WS subscriber is connected the
@@ -135,24 +170,24 @@ class Store:
         delivered = False
         if self.push_hook:
             try:
-                delivered = bool(self.push_hook(device_id, envelope))
+                delivered = bool(self.push_hook(device_id, envelope, world_id))
             except Exception:
                 delivered = False
         if not delivered:
             with self.lock:
-                path = self.queue_path(device_id)
+                path = self.queue_path(device_id, world_id)
                 queue = self._read(path) or []
                 queue.append(envelope)
                 self._write(path, queue)
         return envelope
 
     def pop_messages(self, device_id: str, max_count: int = 64,
-                     max_age_ms: int = 60_000):
+                     max_age_ms: int = 60_000, world_id: str = "default"):
         """Pop up to max_count messages from the durable queue. Drops any
         envelope older than max_age_ms — stale work piled up while a device
         was offline shouldn't replay all at once on reconnect."""
         with self.lock:
-            path = self.queue_path(device_id)
+            path = self.queue_path(device_id, world_id)
             queue = self._read(path) or []
             cutoff = _now_ms() - max_age_ms
             fresh = [e for e in queue if (e.get("ts") or 0) >= cutoff]
@@ -161,9 +196,9 @@ class Store:
             self._write(path, remaining)
             return taken
 
-    def purge_queue(self, device_id: str) -> int:
+    def purge_queue(self, device_id: str, world_id: str = "default") -> int:
         with self.lock:
-            path = self.queue_path(device_id)
+            path = self.queue_path(device_id, world_id)
             queue = self._read(path) or []
             self._write(path, [])
             return len(queue)
@@ -190,15 +225,17 @@ class WSHub:
     def __init__(self, store: Store, token):
         self.store = store
         self.token = token
-        self.queues: dict[str, asyncio.Queue] = {}
+        # Keyed by (world_id, device_id) so peers in different MC worlds
+        # don't share a subscriber queue.
+        self.queues: dict[tuple[str, str], asyncio.Queue] = {}
         self.loop: asyncio.AbstractEventLoop | None = None
 
-    def push(self, device_id: str, envelope: dict) -> bool:
+    def push(self, device_id: str, envelope: dict, world_id: str = "default") -> bool:
         """Called from any thread. Returns True if a subscriber received the
         envelope (so the durable queue can skip it)."""
         if not self.loop:
             return False
-        q = self.queues.get(device_id)
+        q = self.queues.get((world_id, device_id))
         if not q:
             return False
         asyncio.run_coroutine_threadsafe(q.put(envelope), self.loop)
@@ -206,6 +243,7 @@ class WSHub:
 
     async def _handler(self, websocket):
         device_id = None
+        world = "default"
         queue: asyncio.Queue | None = None
         try:
             try:
@@ -226,18 +264,22 @@ class WSHub:
             if not device_id:
                 await websocket.send(json.dumps({"type": "error", "error": "id required"}))
                 return
+            wid = (auth.get("world_id") or "default").strip() or "default"
+            world = "".join(c for c in wid if c.isalnum() or c in "-_.") or "default"
 
             self.store.upsert_device(device_id, {
                 "role": auth.get("role"),
                 "name": auth.get("name"),
                 "version": auth.get("version"),
                 "transport": "ws",
-            })
+            }, world_id=world)
 
+            # Subscriber queue is keyed by (world_id, device_id) so two
+            # devices with the same id in different worlds don't collide.
             queue = asyncio.Queue()
-            self.queues[device_id] = queue
+            self.queues[(world, device_id)] = queue
 
-            for env in self.store.pop_messages(device_id):
+            for env in self.store.pop_messages(device_id, world_id=world):
                 await queue.put(env)
 
             await websocket.send(json.dumps({"type": "ready"}))
@@ -256,11 +298,13 @@ class WSHub:
                         body = m.get("msg") or {}
                         if isinstance(body, dict) and target:
                             body.setdefault("from", device_id)
-                            self.store.push_message(target, body)
+                            # Sender's world_id is sticky — they can't
+                            # talk to a peer in a foreign world.
+                            self.store.push_message(target, body, world_id=world)
                     elif t == "heartbeat":
                         self.store.upsert_device(device_id, {
                             "metrics": m.get("metrics") or {},
-                        })
+                        }, world_id=world)
 
             async def writer():
                 while True:
@@ -293,8 +337,8 @@ class WSHub:
         except Exception as exc:
             print(f"[ws] error: {exc}", flush=True)
         finally:
-            if device_id and self.queues.get(device_id) is queue:
-                self.queues.pop(device_id, None)
+            if device_id and self.queues.get((world, device_id)) is queue:
+                self.queues.pop((world, device_id), None)
 
     async def _serve(self, host, ports, cert, key):
         import websockets
@@ -357,6 +401,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
 
+    def _world_id(self) -> str:
+        # Cross-world isolation. Devices in different MC worlds connecting
+        # to the same bus server use distinct X-World-Id values so they
+        # don't see each other (and don't crash each other's _ENV with
+        # foreign rednet broadcasts). Empty / missing header → "default".
+        wid = (self.headers.get("X-World-Id") or "default").strip()
+        if not wid:
+            return "default"
+        # Sanitise: keep only [A-Za-z0-9_-.] so it's safe as a dict key
+        # AND as a path segment if we ever shard files by world.
+        return "".join(c for c in wid if c.isalnum() or c in "-_.") or "default"
+
     def _check_auth(self) -> bool:
         if not self.api_token:
             return True
@@ -389,6 +445,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         url = urlparse(path)
         parts = url.path.split("/")
         seg = parts[2] if len(parts) >= 3 else ""
+        world = self._world_id()
 
         try:
             if method == "POST" and seg == "register":
@@ -401,8 +458,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "name": body.get("name"),
                     "version": body.get("version"),
                     "registered_at": body.get("registered_at") or _now_ms(),
-                })
-                return self._send_json(200, {"ok": True, "device": rec}) or True
+                }, world_id=world)
+                return self._send_json(200, {"ok": True, "device": rec, "world_id": world}) or True
 
             if method == "POST" and seg == "heartbeat":
                 body = self._read_body() or {}
@@ -412,31 +469,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 rec = store.upsert_device(str(dev_id), {
                     "metrics": body.get("metrics") or {},
                     "version": body.get("version"),
-                })
+                }, world_id=world)
                 return self._send_json(200, {"ok": True, "device": rec}) or True
 
             if method == "GET" and seg == "devices":
-                return self._send_json(200, store.devices()) or True
+                # Returned dict uses raw device id as the outer key for
+                # the dashboard's existing UI; cross-world entries are
+                # filtered out before that flattening.
+                wd = store.devices(world)
+                out = {}
+                for k, v in wd.items():
+                    out[v.get("id") or k] = v
+                return self._send_json(200, out) or True
 
             if seg == "messages" and len(parts) >= 4:
                 dev_id = parts[3]
                 if method == "GET":
-                    msgs = store.pop_messages(dev_id)
+                    msgs = store.pop_messages(dev_id, world_id=world)
                     return self._send_json(200, {"messages": msgs}) or True
                 if method == "POST":
                     body = self._read_body() or {}
                     if not isinstance(body, dict):
                         return self._send_json(400, {"error": "json object required"}) or True
-                    env = store.push_message(dev_id, body)
+                    env = store.push_message(dev_id, body, world_id=world)
                     return self._send_json(200, {"ok": True, "message": env}) or True
 
             if method == "POST" and seg == "purge":
-                # /api/purge        -> clear every device's durable queue
-                # /api/purge/<id>   -> clear just that device
+                # /api/purge        -> clear every device's durable queue (this world only)
+                # /api/purge/<id>   -> clear just that device (in this world)
                 if len(parts) >= 4 and parts[3]:
-                    n = store.purge_queue(parts[3])
+                    n = store.purge_queue(parts[3], world_id=world)
                     return self._send_json(200, {"ok": True, "dropped": n}) or True
-                n = store.purge_all_queues()
+                n = 0
+                for dev_id in store.devices(world).keys():
+                    n += store.purge_queue(dev_id, world_id=world)
                 return self._send_json(200, {"ok": True, "dropped": n}) or True
 
             if method == "POST" and seg == "broadcast":
@@ -444,8 +510,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if not isinstance(body, dict):
                     return self._send_json(400, {"error": "json object required"}) or True
                 envs = []
-                for dev_id in store.devices().keys():
-                    envs.append(store.push_message(dev_id, body))
+                for v in store.devices(world).values():
+                    raw_id = v.get("id")
+                    if raw_id:
+                        envs.append(store.push_message(raw_id, body, world_id=world))
                 return self._send_json(200, {"ok": True, "delivered": len(envs)}) or True
 
             # ---- atlas: shared world map ------------------------------

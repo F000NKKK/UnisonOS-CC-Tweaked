@@ -64,4 +64,11 @@ return {
     -- jobs. Common values: "mining", "farming", "lumber". A turtle
     -- with no kind is treated as "any".
     -- kind = "mining",
+
+    -- Cross-world isolation. If you connect computers from multiple
+    -- Minecraft worlds / save files to the SAME bus server, set a
+    -- distinct world_id per world so they can't see each other on
+    -- /api/devices, /api/messages and /api/broadcast. Devices that
+    -- omit this default to "default" — fine for single-world setups.
+    -- world_id = "alpha",
 }

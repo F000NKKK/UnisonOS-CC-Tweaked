@@ -2,7 +2,7 @@
   "branch": "master",
   "checksums": {
     "unison/boot.lua": "869e0a80a3c018b6c76292698290bdb2b391fba08b1ca53b873c332398260743",
-    "unison/config.lua.example": "69f3511f9d3415280be2c3fcd8ea46c8018d36d55fd47d95a2bdc5e5dae7f2fd",
+    "unison/config.lua.example": "9cef556f835a64fde3d1bad5c100900c8bf99c5fec39f78a77659749b2e91a83",
     "unison/crypto/hmac.lua": "11fd7b116cb11f1c1108396ba2359a066c4b4de47b0ffc1bee1bf6bb8f45189f",
     "unison/crypto/sha256.lua": "4ab03e86304ddbeff9665e847099a86f4ccffc40c77d40ecc31ae6adb5eb3a9f",
     "unison/kernel/async.lua": "b8fb4ed2cd818d2da3166cf43b5928c3d3e93d74a30bee400a9f5e53c95f4f52",
@@ -57,7 +57,7 @@
     "unison/pm/installer.lua": "877b8fda2b2903e26a2379f5d9f5d6e805dbd44dbd1e61449ba439d534672678",
     "unison/pm/registry.lua": "75faf4ff2fab2389ca2186fdb4a0a4838d91bb664f2aa87bbd5870e75221b267",
     "unison/pm/sources.lua": "2e7149097b8357b456ac59283a678a38c7ffecbc59cae11113440e4573d8b9fb",
-    "unison/rpc/client.lua": "d4c42c002b403add465e85cc239a5d399e5a4149ac0130ce600d81d7511a3d2c",
+    "unison/rpc/client.lua": "f91f56dac253ae20d40d5683473417f2dc9441fdb00b4aa5c35c4ab7cb7ee3b5",
     "unison/services.d/crond.lua": "ff3d717dfb37cb93411c1e252b4774a8098497e90e411e79d73296543fed06bb",
     "unison/services.d/disk-updater.lua": "08130159ed4505caa8d6460fda6d4869ea9af6dac0c685330ff202d7bb0f1aad",
     "unison/services.d/dispatcher.lua": "90579e4d0411ce32f882a275517ddd61f07fe32286f456ba5052ecdba3a8c6f2",
@@ -280,5 +280,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.30.4"
+  "version": "0.31.0"
 }
