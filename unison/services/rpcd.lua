@@ -22,7 +22,7 @@ local handlerSeq = 0
 local activeWs = nil
 
 local POLL_INTERVAL      = 3
-local HEARTBEAT_INTERVAL = 20
+local HEARTBEAT_INTERVAL = 10
 local WS_RECONNECT_SEC   = 5
 
 ----------------------------------------------------------------------

@@ -74,9 +74,11 @@ class Store:
     # Stale-device pruning policy. Console sessions (web dashboards) get
     # evicted aggressively because every browser tab spawns a fresh
     # console-XXXX entry; without TTL they pile up forever. Real devices
-    # (turtles, computers) get a longer TTL to survive transient outages.
+    # use a tight 30 s TTL so cross-world / cross-server connections
+    # disappear from /api/devices the moment their MC instance shuts
+    # down — they can't keep poisoning the bus with stale state.
     CONSOLE_TTL_MS = 5 * 60 * 1000        # 5 minutes
-    DEVICE_TTL_MS  = 7 * 24 * 60 * 60 * 1000  # 7 days
+    DEVICE_TTL_MS  = 30 * 1000            # 30 seconds
 
     def _is_console(self, dev_id: str, info: dict) -> bool:
         if dev_id.startswith("console-"):
