@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.31.4)
+## Status (current: 0.32.0)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -117,6 +117,7 @@ config; rpcd merges the two).
 | `select`      | WorldEdit-style selection: `list/new/use/show/p1/p2/expand/contract/shift/slice/queue/cancel/rm` |
 | `kind`        | Get / set this turtle's worker kind (`mining / farming / any / clear`) |
 | `world`       | Get / set the bus world_id (cross-world isolation) — `world alpha` / `world clear` |
+| `displays`    | List monitors / set per-monitor scale (`auto` or 0.5..5) / enable / disable |
 | `fuel`        | Inspect fuel + coal, broadcast fuel-help, manual courier deliver |
 | `apitoken`    | `set/show/clear` the VPS API token                        |
 | `acl`         | Per-device RPC firewall: `list/set/clear/reset`           |

@@ -72,7 +72,7 @@
     "unison/services/crond.lua": "ceeb3273b72f0366a5b88671cda9c6d1b414c2bef7f379f4115c132fcd8270ae",
     "unison/services/disk_updater.lua": "d297c13aa42b7757e6f8e3023e80f7266cd5cd04ee8b74ac2c34ec16e7fff14f",
     "unison/services/dispatcher.lua": "5daa89db4a75bf923011cb499e6c4ddd3ae82bd16f23c16ee0d3f033ff61fa4f",
-    "unison/services/display.lua": "5b05a8ec098fd09330cbd3cd8823aa6630cb123da1e91cb109b95bb8c5cc6f26",
+    "unison/services/display.lua": "91a6249272242720381f2d8ac142d254891e5e3306f324a84e73a7003b512c84",
     "unison/services/fuel.lua": "b61615f890ec5d573c2623208f409e7d003adc4c5ce919e0e43b463273cb7194",
     "unison/services/gps_host.lua": "0f140b1282a674cd77dba6058340cd8e912fcfab60ab4d22483ab3d033773b4b",
     "unison/services/os_updater.lua": "eacf3e0948f4b2e85953a049118a0fd182b962fa5c2f9187dc62dc55621a94b3",
@@ -87,6 +87,7 @@
     "unison/shell/commands/desktop.lua": "f648766b62f2d91fd018895605d2df0c1c86996db2ddae64d2853a490b456c21",
     "unison/shell/commands/devices.lua": "02316ba654562503a33b836b37e2bd99672f08d19c281bafa2ca8623055817b9",
     "unison/shell/commands/dispatcher.lua": "c542069605f3b5b5c657bf8310745c0fb068289a9d7ba5dbda08fc38cf4a49da",
+    "unison/shell/commands/displays.lua": "b8b0330e46f330c229fc724deda5be4ea14095d070159ca5e8bf63c469872bf0",
     "unison/shell/commands/echo.lua": "cb76a5ffab3acf5e3638d9f3e3fe802ee2e67d3ea29368eaff15f93d35bb7ed4",
     "unison/shell/commands/fuel.lua": "c5856183490a7087b182e56857673f2a3f5526c5e38319aeba0dbc9e3aa009f5",
     "unison/shell/commands/gps-tower.lua": "604f5459b4ed7d7e31aa8f5ba5474bc0e807939a394fe3a3f3796554e1610d45",
@@ -228,6 +229,7 @@
       "unison/shell/commands/desktop.lua",
       "unison/shell/commands/devices.lua",
       "unison/shell/commands/dispatcher.lua",
+      "unison/shell/commands/displays.lua",
       "unison/shell/commands/echo.lua",
       "unison/shell/commands/fuel.lua",
       "unison/shell/commands/gps-tower.lua",
@@ -282,5 +284,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.31.4"
+  "version": "0.32.0"
 }

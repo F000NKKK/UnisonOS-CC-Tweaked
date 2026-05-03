@@ -21,10 +21,27 @@ local M = {}
 
 local STATE_FILE = "/unison/state/display.lua"
 
--- We default to the smallest scale CC supports for max cell count. CC
--- rejects values below 0.5 with an error, so applyMonitorSettings tries
--- the requested value first and falls back to 0.5 if the engine refuses.
-local DEFAULT_SCALE = 0.1
+-- "auto" picks the largest CC scale (0.5..5) where the monitor's
+-- cell grid still covers the shadow in BOTH dimensions — minimal
+-- letterbox borders, no content clipping. Falls back to 0.5 (most
+-- cells) when the monitor is too small to fit the shadow at any scale.
+-- Numeric values are honored verbatim; CC rejects <0.5, falls back to 0.5.
+local DEFAULT_SCALE = "auto"
+local VALID_SCALES = { 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5 }
+
+local function pickAutoScale(mon, shadowW, shadowH)
+    if not (mon and mon.setTextScale and mon.getSize) then return 0.5 end
+    if not (shadowW and shadowH) then return 0.5 end
+    for _, s in ipairs(VALID_SCALES) do
+        if pcall(mon.setTextScale, s) then
+            local ok, w, h = pcall(mon.getSize)
+            if ok and w and h and w >= shadowW and h >= shadowH then
+                return s
+            end
+        end
+    end
+    return 0.5   -- shadow doesn't fit at any scale → max-cell density
+end
 
 local state = {
     primary    = nil,
@@ -47,10 +64,11 @@ local function readState()
     if not fn then return {} end
     local ok, t = pcall(fn)
     if not (ok and type(t) == "table") then return {} end
-    -- Migration: scale=1 / nil → 0.5 (smallest CC supports → max area).
+    -- Migration: nil scale → "auto" (the new fit-aware default).
+    -- Old explicit 0.5 / 1 are preserved so user choices stick.
     if t.monitors then
         for _, s in pairs(t.monitors) do
-            if s.scale == 1 or s.scale == nil then s.scale = 0.5 end
+            if s.scale == nil then s.scale = "auto" end
         end
     end
     return t
@@ -81,6 +99,11 @@ local function applyMonitorSettings(entry, settings)
     settings = settings or {}
     if entry.mon.setTextScale then
         local target = settings.scale or DEFAULT_SCALE
+        if target == "auto" then
+            local sw = state.shadow and state.shadow.w or nil
+            local sh = state.shadow and state.shadow.h or nil
+            target = pickAutoScale(entry.mon, sw, sh)
+        end
         local ok = pcall(entry.mon.setTextScale, target)
         if not ok then pcall(entry.mon.setTextScale, 0.5) end
     end
@@ -137,7 +160,7 @@ end
 local function defaultConfig(monitors)
     local mc = {}
     for _, mon in ipairs(monitors) do
-        mc[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
+        mc[mon.name] = { enabled = true, scale = "auto", background = colors.black }
     end
     return { mirror_all = true, monitors = mc }
 end
@@ -150,7 +173,7 @@ function M.start(cfgOverride)
     else
         for _, mon in ipairs(state.monitors) do
             if not persisted.monitors[mon.name] then
-                persisted.monitors[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
+                persisted.monitors[mon.name] = { enabled = true, scale = "auto", background = colors.black }
             end
         end
     end
@@ -211,7 +234,7 @@ function M.refresh()
     state.monitors = fresh
     for _, mon in ipairs(state.monitors) do
         if not state.cfg.monitors[mon.name] then
-            state.cfg.monitors[mon.name] = { enabled = true, scale = 0.5, background = colors.black }
+            state.cfg.monitors[mon.name] = { enabled = true, scale = "auto", background = colors.black }
             changed = true
         end
     end
