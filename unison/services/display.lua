@@ -122,6 +122,7 @@ local function rebuild()
     local primary = term.native()
     local enabledMonitors = {}
     local enabledNames = {}
+    local primaryMon = nil   -- the monitor flagged as 'primary' in cfg
 
     for _, mon in ipairs(state.monitors) do
         local mname = mon.name
@@ -130,6 +131,7 @@ local function rebuild()
             applyMonitorSettings(mon, s)
             enabledMonitors[#enabledMonitors + 1] = mon.mon
             enabledNames[#enabledNames + 1] = mname
+            if s.primary then primaryMon = mon end
         end
     end
 
@@ -137,7 +139,18 @@ local function rebuild()
     state.targets = enabledMonitors
     state.targetNames = enabledNames
 
-    local mux = Multiplex.build(primary, enabledMonitors)
+    -- If a monitor is marked primary, resize the shadow buffer to its
+    -- cell grid so the OS draws at the monitor's full resolution. apps'
+    -- term.getSize() reports those dimensions, so 79x24 monitors really
+    -- get 79x24 of screen — no letterbox, no clipping.
+    local muxOpts
+    if primaryMon and primaryMon.mon and primaryMon.mon.getSize then
+        local ok, mw, mh = pcall(primaryMon.mon.getSize)
+        if ok and mw and mh then
+            muxOpts = { shadowSize = { w = mw, h = mh } }
+        end
+    end
+    local mux = Multiplex.build(primary, enabledMonitors, muxOpts)
     state.multiplex = mux.multiplex
     state.shadow    = mux.shadow
 
@@ -201,6 +214,7 @@ function M.list()
             name = mon.name,
             enabled = s.enabled ~= false,
             scale = s.scale or 1,
+            primary = s.primary == true,
             width = w, height = h,
         }
     end
@@ -218,6 +232,22 @@ end
 function M.setEnabled(name, enabled) patchCfg(name, "enabled", enabled and true or false) end
 function M.setScale(name, scale)     patchCfg(name, "scale",   scale) end
 function M.setBackground(name, color)patchCfg(name, "background", color) end
+
+-- Mark exactly one monitor as 'primary'. The shadow buffer is then
+-- resized to that monitor's cell grid so apps draw at its full
+-- resolution. Pass nil / "" to clear (revert to primary terminal sized
+-- shadow).
+function M.setPrimary(name)
+    local cfg = state.cfg
+    cfg.monitors = cfg.monitors or {}
+    for k, v in pairs(cfg.monitors) do v.primary = nil end
+    if name and name ~= "" then
+        cfg.monitors[name] = cfg.monitors[name] or {}
+        cfg.monitors[name].primary = true
+    end
+    writeState(cfg)
+    rebuild()
+end
 
 function M.refresh()
     local fresh = discoverMonitors()

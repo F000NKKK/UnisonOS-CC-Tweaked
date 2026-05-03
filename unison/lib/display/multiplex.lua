@@ -24,11 +24,19 @@ local M = {}
 
 -- Returns { multiplex = <term-redirect target>, shadow = <Shadow>,
 --           palette = <fn(...) to forward setPaletteColor everywhere> }
--- The caller still owns the monitor list; this factory only knows
--- about the primary terminal.
-function M.build(primary, monitors)
+--
+-- opts.shadowSize = { w, h } overrides the shadow's dimensions so a
+-- larger monitor can drive a bigger virtual screen than the actual
+-- primary terminal. multiplex.getSize then reports those dimensions
+-- to apps so they render to fill the monitor.
+function M.build(primary, monitors, opts)
+    opts = opts or {}
     local pw, ph = primary.getSize()
-    local shadow = Shadow.new(pw, ph)
+    local sw, sh = pw, ph
+    if opts.shadowSize and opts.shadowSize.w and opts.shadowSize.h then
+        sw, sh = opts.shadowSize.w, opts.shadowSize.h
+    end
+    local shadow = Shadow.new(sw, sh)
 
     -- Sync initial cursor + pen so the shadow agrees with the screen
     -- straight after the first redirect.
@@ -74,6 +82,12 @@ function M.build(primary, monitors)
     -- Pure passthrough for queries — apps see the primary's geometry.
     for _, fn in ipairs(TERM_QUERY_PRIMARY) do
         m[fn] = function(...) if primary[fn] then return primary[fn](...) end end
+    end
+
+    -- If the shadow was resized to a monitor, override getSize so apps
+    -- render to the larger surface. Other queries still go to primary.
+    if sw ~= pw or sh ~= ph then
+        m.getSize = function() return sw, sh end
     end
 
     -- term.redirect compatibility: apps that call term.redirect(<target>)

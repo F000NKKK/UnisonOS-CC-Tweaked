@@ -8,8 +8,9 @@
 --   displays disable <name>           exclude this monitor (it stays black)
 
 local M = {
-    desc  = "List / configure attached monitors (scale, mirror on/off)",
-    usage = "displays [scale <name> <auto|0.5..5> | enable <name> | disable <name>]",
+    desc  = "List / configure attached monitors (scale, primary, on/off)",
+    usage = "displays [scale <name> <auto|0.5..5> | enable <name> | "
+         .. "disable <name> | primary <name|none>]",
 }
 
 local function svc()
@@ -32,12 +33,13 @@ local function err(s) if unison and unison.stdio then unison.stdio.printError(s)
 local function show(d)
     local rows = d.list and d.list() or {}
     if #rows == 0 then out("(no monitors attached)") return end
-    out(string.format("%-16s %-8s %-6s %-6s %s",
-        "NAME", "ENABLED", "SCALE", "SIZE", ""))
+    out(string.format("%-16s %-3s %-3s %-6s %s",
+        "NAME", "ON", "PRI", "SCALE", "SIZE"))
     for _, r in ipairs(rows) do
-        out(string.format("%-16s %-8s %-6s %dx%d",
+        out(string.format("%-16s %-3s %-3s %-6s %dx%d",
             r.name,
-            r.enabled and "yes" or "no",
+            r.enabled and "y" or "-",
+            r.primary and "y" or "-",
             tostring(r.scale),
             r.width, r.height))
     end
@@ -80,6 +82,20 @@ function M.run(ctx, args)
         if not d.setEnabled then err("display.setEnabled unavailable"); return end
         d.setEnabled(name, sub == "enable")
         out(sub .. ": " .. name)
+        return show(d)
+    end
+
+    if sub == "primary" then
+        local name = args[2]
+        if not name then err("usage: displays primary <name|none>"); return end
+        if not d.setPrimary then err("display.setPrimary unavailable"); return end
+        if name == "none" or name == "off" or name == "-" then
+            d.setPrimary(nil)
+            out("primary: cleared (shadow back to terminal size).")
+        else
+            d.setPrimary(name)
+            out("primary: " .. name .. " (shadow resized to its cells).")
+        end
         return show(d)
     end
 
