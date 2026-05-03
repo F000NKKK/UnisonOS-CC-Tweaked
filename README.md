@@ -6,7 +6,7 @@ talk to each other through an HTTP/WebSocket message bus hosted on a
 self-hostable VPS, and share a server-side world atlas (blocks, landmarks,
 events, A* pathfinding) so the cluster behaves as one machine.
 
-## Status (current: 0.31.0)
+## Status (current: 0.31.1)
 
 | Phase | Scope                                                       | Status |
 |-------|-------------------------------------------------------------|--------|
@@ -79,7 +79,9 @@ return {
     master  = { secret = "CHANGE_ME" },
 
     -- Cross-world isolation. If multiple MC worlds talk to the same bus,
-    -- give each a distinct id so devices don't see each other.
+    -- give each a distinct id so devices don't see each other. Can also
+    -- be set at runtime via the `world` shell command (state file at
+    -- /unison/state/world.json overrides this config entry).
     -- world_id = "alpha",
 
     -- Dispatcher: enable on one machine to orchestrate mine workers
@@ -114,6 +116,7 @@ config; rpcd merges the two).
 | `home`        | Manage home point: `show / here / set X Y Z [F] [label] / label / clear` |
 | `select`      | WorldEdit-style selection: `list/new/use/show/p1/p2/expand/contract/shift/slice/queue/cancel/rm` |
 | `kind`        | Get / set this turtle's worker kind (`mining / farming / any / clear`) |
+| `world`       | Get / set the bus world_id (cross-world isolation) — `world alpha` / `world clear` |
 | `fuel`        | Inspect fuel + coal, broadcast fuel-help, manual courier deliver |
 | `apitoken`    | `set/show/clear` the VPS API token                        |
 | `acl`         | Per-device RPC firewall: `list/set/clear/reset`           |

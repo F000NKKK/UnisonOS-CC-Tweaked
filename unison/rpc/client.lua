@@ -49,10 +49,23 @@ local function nodeId()
 end
 
 -- World identifier — partitions the bus so devices in different MC
--- worlds don't see each other. Set `world_id = "myworld"` in
--- /unison/config.lua. Defaults to "default" so single-world setups
--- keep working unchanged.
+-- worlds don't see each other. Resolution order:
+--   1. /unison/state/world.json  ({"world_id":"alpha"})  — set by `world` shell cmd
+--   2. /unison/config.lua  (unison.config.world_id)
+--   3. "default"
+-- The state file beats config so `world set alpha` works without an edit.
+local WORLD_STATE = "/unison/state/world.json"
 local function worldId()
+    if fs.exists(WORLD_STATE) then
+        local h = fs.open(WORLD_STATE, "r")
+        if h then
+            local s = h.readAll(); h.close()
+            local ok, t = pcall(textutils.unserializeJSON, s)
+            if ok and type(t) == "table" and t.world_id then
+                return tostring(t.world_id)
+            end
+        end
+    end
     if unison and unison.config and unison.config.world_id then
         return tostring(unison.config.world_id)
     end

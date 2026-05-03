@@ -57,7 +57,7 @@
     "unison/pm/installer.lua": "877b8fda2b2903e26a2379f5d9f5d6e805dbd44dbd1e61449ba439d534672678",
     "unison/pm/registry.lua": "75faf4ff2fab2389ca2186fdb4a0a4838d91bb664f2aa87bbd5870e75221b267",
     "unison/pm/sources.lua": "2e7149097b8357b456ac59283a678a38c7ffecbc59cae11113440e4573d8b9fb",
-    "unison/rpc/client.lua": "f91f56dac253ae20d40d5683473417f2dc9441fdb00b4aa5c35c4ab7cb7ee3b5",
+    "unison/rpc/client.lua": "235b1b2dc3959fa47ffd084ed7dc4d9b23b0fcc73319e70f0cb67c892bb1bd18",
     "unison/services.d/crond.lua": "ff3d717dfb37cb93411c1e252b4774a8098497e90e411e79d73296543fed06bb",
     "unison/services.d/disk-updater.lua": "08130159ed4505caa8d6460fda6d4869ea9af6dac0c685330ff202d7bb0f1aad",
     "unison/services.d/dispatcher.lua": "90579e4d0411ce32f882a275517ddd61f07fe32286f456ba5052ecdba3a8c6f2",
@@ -120,6 +120,7 @@
     "unison/shell/commands/touch.lua": "667700415d96af3f2d89933bb8fea1ad01b049dbed9ac474b30e3397a1697828",
     "unison/shell/commands/upm.lua": "97a11c0e127ba5deb749ffad6b05f46045a0a1e1886a5dffbebe8e347a8888f8",
     "unison/shell/commands/version.lua": "0106ae580900db7e88baa86f98d3c7e282c19c38ca9b49d30eb96c07f7729d8a",
+    "unison/shell/commands/world.lua": "0c2e5c0ef462acb116a59f79cde8375706109bd6f04e1d36ac422be7c3359fe1",
     "unison/shell/path.lua": "eaf5df69b3872de268f5c7b4ca859b9e8b27ca9803b3c6550838787a3ea417c7",
     "unison/shell/shell.lua": "fab2d87b070e97faec2253e682a996377886569a60ce215cdcc4229d80307bd6",
     "unison/ui/apps/devices.lua": "7468c93dea539d02b514e1b703e507d854f9cfc384796852f20dc9c794b8cb52",
@@ -260,6 +261,7 @@
       "unison/shell/commands/touch.lua",
       "unison/shell/commands/upm.lua",
       "unison/shell/commands/version.lua",
+      "unison/shell/commands/world.lua",
       "unison/shell/path.lua",
       "unison/shell/shell.lua",
       "unison/ui/apps/devices.lua",
@@ -280,5 +282,5 @@
     "pocket": [],
     "turtle": []
   },
-  "version": "0.31.0"
+  "version": "0.31.1"
 }
