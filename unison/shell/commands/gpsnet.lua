@@ -77,45 +77,66 @@ local function locateHere(timeout)
     return nil, nil, nil, srcOrErr or "self locate failed"
 end
 
+local function safeStep(label, fn)
+    -- Run a status step; on any error print a one-line message and
+    -- carry on so the rest of the report still appears.
+    local ok, err = pcall(fn)
+    if not ok then print(label .. ": CRASH — " .. tostring(err)) end
+end
+
 local function printStatus()
-    local st = loadState()
-    print("gpsnet mode: " .. tostring(st.mode))
-    if st.mode == "host" and st.host then
-        print(string.format("host position: %d,%d,%d", st.host.x, st.host.y, st.host.z))
-    end
-
-    if gps then
-        local ok, x, y, z = pcall(gps.locate, 1)
-        if not ok then
-            print("local gps: PANIC — " .. tostring(x))
-        elseif x then
-            print(string.format("local gps: %d,%d,%d", iRound(x), iRound(y), iRound(z)))
-        else
-            print("local gps: unavailable")
+    safeStep("gpsnet mode", function()
+        local st = loadState()
+        print("gpsnet mode: " .. tostring(st.mode))
+        if st.mode == "host" and st.host then
+            print(string.format("host position: %d,%d,%d",
+                st.host.x, st.host.y, st.host.z))
         end
-    else
-        print("local gps: api unavailable")
-    end
+    end)
 
-    local x, y, z, src = gpsLib.locate("self", { http_only = true })
-    if x then
-        print(string.format("http gps self: %d,%d,%d (%s)", x, y, z, tostring(src or "http")))
-    else
-        print("http gps self: unavailable")
-    end
+    safeStep("local gps", function()
+        if gps then
+            local ok, x, y, z = pcall(gps.locate, 1)
+            if not ok then
+                print("local gps: PANIC — " .. tostring(x))
+            elseif x then
+                print(string.format("local gps: %d,%d,%d", iRound(x), iRound(y), iRound(z)))
+            else
+                print("local gps: unavailable")
+            end
+        else
+            print("local gps: api unavailable")
+        end
+    end)
 
-    local client = getClient()
-    local devices, err = client.devices()
-    if not devices then
-        print("bus self: unavailable (" .. tostring(err) .. ")")
-        return
-    end
-    local selfId = tostring(os.getComputerID())
-    if devices[selfId] then
-        print("bus self: registered as " .. selfId)
-    else
-        print("bus self: not registered (run `gpsnet up`)")
-    end
+    safeStep("http gps self", function()
+        local x, y, z, src = gpsLib.locate("self", { http_only = true })
+        if x then
+            print(string.format("http gps self: %d,%d,%d (%s)",
+                x, y, z, tostring(src or "http")))
+        else
+            print("http gps self: unavailable")
+        end
+    end)
+
+    safeStep("bus self", function()
+        local client = getClient()
+        local okDev, devices, err = pcall(client.devices)
+        if not okDev then
+            print("bus self: client.devices crashed — " .. tostring(devices))
+            return
+        end
+        if not devices then
+            print("bus self: unavailable (" .. tostring(err) .. ")")
+            return
+        end
+        local selfId = tostring(os.getComputerID())
+        if devices[selfId] then
+            print("bus self: registered as " .. selfId)
+        else
+            print("bus self: not registered (run `gpsnet up`)")
+        end
+    end)
 end
 
 local function cmdHost(args)

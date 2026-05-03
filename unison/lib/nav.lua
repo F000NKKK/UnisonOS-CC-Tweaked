@@ -139,24 +139,101 @@ end
 
 local _cachedFacing = nil
 
-function M.facing(opts)
-    -- Cache last known facing across calls. Anyone who turns the
-    -- turtle outside nav.faceAxis must call M.invalidateFacing().
-    if _cachedFacing ~= nil then return _cachedFacing end
-    local f, err = probeFacing(opts)
-    if f then _cachedFacing = f end
-    return f, err
+local FACE_STATE_FILE = "/unison/state/nav-facing.json"
+
+local function readSavedFacing()
+    if not fs.exists(FACE_STATE_FILE) then return nil end
+    local h = fs.open(FACE_STATE_FILE, "r"); if not h then return nil end
+    local s = h.readAll(); h.close()
+    local ok, t = pcall(textutils.unserializeJSON, s)
+    if not ok or type(t) ~= "table" then return nil end
+    local f = tonumber(t.facing)
+    if f == 0 or f == 1 or f == 2 or f == 3 then return f end
+    return nil
 end
 
-function M.invalidateFacing() _cachedFacing = nil end
+local function writeSavedFacing(f)
+    if not fs.exists("/unison/state") then fs.makeDir("/unison/state") end
+    local h = fs.open(FACE_STATE_FILE, "w"); if not h then return end
+    h.write(textutils.serializeJSON({ facing = f }))
+    h.close()
+end
+
+-- Best-effort facing detection.
+--
+-- Resolution chain:
+--   1. RAM cache (this session)
+--   2. /unison/state/nav-facing.json (last persisted by faceAxis)
+--   3. unison.lib.home.facing
+--   4. probeFacing (vanilla GPS step+compare)
+--   5. fall back to 0 (+x) and warn
+--
+-- We persist the result so the next session starts knowing where the
+-- turtle pointed. Anyone who turns the turtle OUTSIDE nav.faceAxis
+-- must call M.invalidateFacing() — otherwise the cache lies.
+function M.facing(opts)
+    if _cachedFacing ~= nil then return _cachedFacing end
+
+    local saved = readSavedFacing()
+    if saved ~= nil then
+        _cachedFacing = saved
+        return saved
+    end
+
+    local L = unison and unison.lib
+    if L and L.home then
+        local h = L.home.get()
+        if h and h.facing and (h.facing == 0 or h.facing == 1
+                            or h.facing == 2 or h.facing == 3) then
+            _cachedFacing = h.facing
+            writeSavedFacing(h.facing)
+            return h.facing
+        end
+    end
+
+    local f, err = probeFacing(opts)
+    if f then
+        _cachedFacing = f
+        writeSavedFacing(f)
+        return f
+    end
+
+    -- Last-resort: assume +x (facing 0). The caller can override
+    -- via nav.setFacing(f) (or the upcoming `face` shell cmd) once
+    -- they know the true heading. Better to start mining in a
+    -- possibly-wrong direction than refuse to move at all.
+    print("[nav] facing probe failed (" .. tostring(err) ..
+        "); assuming +x. Use `nav.setFacing(0..3)` to override.")
+    _cachedFacing = 0
+    writeSavedFacing(0)
+    return 0
+end
+
+function M.invalidateFacing()
+    _cachedFacing = nil
+    if fs.exists(FACE_STATE_FILE) then fs.delete(FACE_STATE_FILE) end
+end
+
+function M.setFacing(f)
+    if f ~= 0 and f ~= 1 and f ~= 2 and f ~= 3 then return false, "facing must be 0..3" end
+    _cachedFacing = f
+    writeSavedFacing(f)
+    return true
+end
 
 local function turnLeft()
     turtle.turnLeft()
-    if _cachedFacing then _cachedFacing = (_cachedFacing + 3) % 4 end
+    if _cachedFacing then
+        _cachedFacing = (_cachedFacing + 3) % 4
+        writeSavedFacing(_cachedFacing)   -- survive reboots
+    end
 end
 local function turnRight()
     turtle.turnRight()
-    if _cachedFacing then _cachedFacing = (_cachedFacing + 1) % 4 end
+    if _cachedFacing then
+        _cachedFacing = (_cachedFacing + 1) % 4
+        writeSavedFacing(_cachedFacing)
+    end
 end
 
 local AXIS_TO_FACING = { ["+x"] = 0, ["+z"] = 1, ["-x"] = 2, ["-z"] = 3 }

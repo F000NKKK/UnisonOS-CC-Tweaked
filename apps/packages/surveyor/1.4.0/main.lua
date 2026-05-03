@@ -678,7 +678,12 @@ screenName = function(opts)
 
             stdio.setColor(colors.black, colors.lightGray)
             stdio.setCursor(1, 5)
-            local name = stdio.read(nil, nil, nil, "kvas")
+            -- Don't pre-fill the field: an Enter on the prompt then
+            -- silently created a 'kvas' selection (the leftover
+            -- example default). Empty default = user types from
+            -- scratch.
+            local ok, name = pcall(stdio.read)
+            if not ok then name = "" end
             stdio.setColor(colors.white, colors.black)
             if name and name ~= "" then
                 local sel = sels.new({ name = name, owner = "pocket" })
