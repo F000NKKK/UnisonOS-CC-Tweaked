@@ -1,0 +1,20 @@
+{
+  "name": "@unison/client-ts-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/hello.ts",
+    "watch-events": "tsx src/watch-events.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.11.3",
+    "@grpc/proto-loader": "^0.7.13",
+    "@unison/proto": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}

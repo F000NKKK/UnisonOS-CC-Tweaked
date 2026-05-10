@@ -1,0 +1,488 @@
+syntax = "proto3";
+
+package unison.v1;
+
+// =============================================================================
+// UnisonOS gRPC contract — единственный публичный API.
+//
+// Все сервисы принимают DeviceTarget (device_id + world_id) — клиент сам
+// выбирает, на каком CC-устройстве выполнить вызов. Шлюз держит WS-пул
+// агентов и проксирует вызов в нужного.
+//
+// Возврат любого CC API представлен как `LuaValue` (значение динамической
+// типизации Lua) — это компромисс: универсальная обёртка вокруг любого
+// возможного результата, без необходимости описывать каждую модовую
+// периферию отдельно.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Универсальные типы
+// -----------------------------------------------------------------------------
+
+// Адрес конкретного CC-устройства в мире.
+message DeviceTarget {
+  string device_id = 1;             // computer/turtle id, как строка
+  string world_id  = 2;             // shard id ("default" если не задан)
+  uint32 timeout_ms = 3;            // 0 → значение шлюза по умолчанию
+}
+
+// Динамическое значение Lua. Используется и для аргументов, и для
+// возвратов произвольных peripheral-методов.
+message LuaValue {
+  oneof v {
+    bool   nil_value     = 1;       // true == nil (proto3 не различает unset)
+    bool   bool_value    = 2;
+    double number_value  = 3;
+    int64  int_value     = 4;
+    string string_value  = 5;
+    bytes  bytes_value   = 6;
+    LuaTable table_value = 7;
+  }
+}
+
+// Lua-таблица: смесь массива и словаря. Шлюз сохраняет порядок
+// array_items, остальное идёт в map_items.
+message LuaTable {
+  repeated LuaValue array_items = 1;
+  map<string, LuaValue> map_items = 2;
+}
+
+// Стандартный исход CC-вызова: либо ok=true и value, либо ok=false и
+// error (CC API часто возвращают [false, "reason"]).
+message LuaResult {
+  bool ok = 1;
+  LuaValue value = 2;
+  string error = 3;
+}
+
+// Звено: список значений (CC API вообще-то возвращают tuple — несколько
+// значений сразу). Для строго-типизированных RPC мы сворачиваем
+// первое значение в `value`, остальные — в `extra`.
+message LuaTuple {
+  bool ok = 1;
+  LuaValue value = 2;
+  repeated LuaValue extra = 3;
+  string error = 4;
+}
+
+message Empty {}
+
+// -----------------------------------------------------------------------------
+// Devices: метаинформация о подключённых тонких клиентах
+// -----------------------------------------------------------------------------
+
+service Devices {
+  rpc List   (ListDevicesReq)   returns (ListDevicesResp);
+  rpc Get    (GetDeviceReq)     returns (DeviceInfo);
+  rpc Watch  (WatchDevicesReq)  returns (stream DeviceEvent);   // attach/detach/heartbeat
+}
+
+message DeviceInfo {
+  string device_id   = 1;
+  string world_id    = 2;
+  string role        = 3;          // "turtle" | "computer" | "pocket" | "console"
+  string label       = 4;
+  string version     = 5;          // OS version reported by agent
+  int64  last_seen_ms = 6;
+  bool   online      = 7;
+  repeated string capabilities = 8; // ["turtle", "monitor", "redstone", ...]
+}
+
+message ListDevicesReq  { string world_id = 1; }
+message ListDevicesResp { repeated DeviceInfo devices = 1; }
+message GetDeviceReq    { DeviceTarget target = 1; }
+message WatchDevicesReq { string world_id = 1; }
+
+message DeviceEvent {
+  enum Kind { UNKNOWN = 0; ATTACHED = 1; DETACHED = 2; UPDATED = 3; }
+  Kind kind = 1;
+  DeviceInfo device = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Generic Lua bridge: запасной канал для всего, что не покрыто типизированными
+// сервисами ниже (в т.ч. модовые периферии и кастомные глобалы).
+// -----------------------------------------------------------------------------
+
+service LuaBridge {
+  // Вызвать произвольный путь "table.path.fn" с аргументами.
+  // Например: Call("turtle.transferTo", [LuaValue{int=2}, LuaValue{int=64}]).
+  rpc Call (LuaCallReq) returns (LuaTuple);
+
+  // Выполнить произвольный chunk. Возвращает то, что вернул `return ...`.
+  // Используется для редких сценариев — лучше всё-таки писать на стороне
+  // gateway/клиента.
+  rpc Eval (LuaEvalReq) returns (LuaTuple);
+}
+
+message LuaCallReq {
+  DeviceTarget target = 1;
+  string path = 2;                   // "turtle.forward" | "peripheral.call"
+  repeated LuaValue args = 3;
+}
+
+message LuaEvalReq {
+  DeviceTarget target = 1;
+  string source = 2;                 // полноценный Lua chunk
+  map<string, LuaValue> env = 3;     // дополнительные глобалы для chunk'а
+}
+
+// =============================================================================
+// CC:Tweaked native APIs — типизированные сервисы.
+// Имена методов 1:1 совпадают с CC API там, где возможно.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// turtle
+// -----------------------------------------------------------------------------
+
+service Turtle {
+  rpc Forward    (TurtleNoArgs) returns (LuaResult);
+  rpc Back       (TurtleNoArgs) returns (LuaResult);
+  rpc Up         (TurtleNoArgs) returns (LuaResult);
+  rpc Down       (TurtleNoArgs) returns (LuaResult);
+  rpc TurnLeft   (TurtleNoArgs) returns (LuaResult);
+  rpc TurnRight  (TurtleNoArgs) returns (LuaResult);
+
+  rpc Dig        (TurtleSideReq) returns (LuaResult);
+  rpc DigUp      (TurtleSideReq) returns (LuaResult);
+  rpc DigDown    (TurtleSideReq) returns (LuaResult);
+
+  rpc Place      (TurtlePlaceReq) returns (LuaResult);
+  rpc PlaceUp    (TurtlePlaceReq) returns (LuaResult);
+  rpc PlaceDown  (TurtlePlaceReq) returns (LuaResult);
+
+  rpc Drop       (TurtleCountReq) returns (LuaResult);
+  rpc DropUp     (TurtleCountReq) returns (LuaResult);
+  rpc DropDown   (TurtleCountReq) returns (LuaResult);
+
+  rpc Suck       (TurtleCountReq) returns (LuaResult);
+  rpc SuckUp     (TurtleCountReq) returns (LuaResult);
+  rpc SuckDown   (TurtleCountReq) returns (LuaResult);
+
+  rpc Refuel     (TurtleCountReq) returns (LuaResult);
+  rpc GetFuelLevel (TurtleNoArgs) returns (LuaResult);
+  rpc GetFuelLimit (TurtleNoArgs) returns (LuaResult);
+
+  rpc Select       (TurtleSlotReq) returns (LuaResult);
+  rpc GetSelectedSlot (TurtleNoArgs) returns (LuaResult);
+  rpc GetItemCount (TurtleSlotReq) returns (LuaResult);
+  rpc GetItemSpace (TurtleSlotReq) returns (LuaResult);
+  rpc GetItemDetail (TurtleItemDetailReq) returns (LuaResult);
+  rpc TransferTo   (TurtleTransferReq) returns (LuaResult);
+  rpc Compare      (TurtleSideReq) returns (LuaResult);
+  rpc CompareUp    (TurtleSideReq) returns (LuaResult);
+  rpc CompareDown  (TurtleSideReq) returns (LuaResult);
+  rpc CompareTo    (TurtleSlotReq) returns (LuaResult);
+
+  rpc Detect       (TurtleSideReq) returns (LuaResult);
+  rpc DetectUp     (TurtleSideReq) returns (LuaResult);
+  rpc DetectDown   (TurtleSideReq) returns (LuaResult);
+
+  rpc Inspect      (TurtleSideReq) returns (LuaResult);
+  rpc InspectUp    (TurtleSideReq) returns (LuaResult);
+  rpc InspectDown  (TurtleSideReq) returns (LuaResult);
+
+  rpc Attack       (TurtleSideReq) returns (LuaResult);
+  rpc AttackUp     (TurtleSideReq) returns (LuaResult);
+  rpc AttackDown   (TurtleSideReq) returns (LuaResult);
+
+  rpc Equip        (TurtleEquipReq) returns (LuaResult);  // EquipLeft / EquipRight
+  rpc Craft        (TurtleCountReq) returns (LuaResult);  // если есть crafty
+}
+
+message TurtleNoArgs   { DeviceTarget target = 1; }
+message TurtleSideReq  { DeviceTarget target = 1; string side = 2; }    // "left"|"right" если применимо
+message TurtleSlotReq  { DeviceTarget target = 1; uint32 slot = 2; }
+message TurtleCountReq { DeviceTarget target = 1; uint32 count = 2; }   // 0 → не передавать
+message TurtleItemDetailReq { DeviceTarget target = 1; uint32 slot = 2; bool detailed = 3; }
+message TurtlePlaceReq { DeviceTarget target = 1; string text = 2; }
+message TurtleTransferReq { DeviceTarget target = 1; uint32 to_slot = 2; uint32 count = 3; }
+message TurtleEquipReq { DeviceTarget target = 1; bool right = 2; }     // false → left
+
+// -----------------------------------------------------------------------------
+// peripheral — универсальный, обрабатывает в т.ч. модовые периферии.
+// -----------------------------------------------------------------------------
+
+service Peripheral {
+  rpc IsPresent  (PeripheralNameReq) returns (LuaResult);
+  rpc GetType    (PeripheralNameReq) returns (LuaResult);
+  rpc HasType    (PeripheralHasTypeReq) returns (LuaResult);
+  rpc GetMethods (PeripheralNameReq) returns (LuaResult);
+  rpc GetNames   (TurtleNoArgs)      returns (LuaResult);     // re-uses no-arg
+  rpc Call       (PeripheralCallReq) returns (LuaTuple);
+  rpc Find       (PeripheralFindReq) returns (LuaResult);
+}
+
+message PeripheralNameReq { DeviceTarget target = 1; string name = 2; }
+message PeripheralHasTypeReq { DeviceTarget target = 1; string name = 2; string type = 3; }
+message PeripheralCallReq {
+  DeviceTarget target = 1;
+  string name = 2;                    // side ("left") или сетевое имя ("monitor_1")
+  string method = 3;
+  repeated LuaValue args = 4;
+}
+message PeripheralFindReq { DeviceTarget target = 1; string type = 2; }
+
+// -----------------------------------------------------------------------------
+// fs
+// -----------------------------------------------------------------------------
+
+service Fs {
+  rpc List      (FsPathReq) returns (LuaResult);
+  rpc Exists    (FsPathReq) returns (LuaResult);
+  rpc IsDir     (FsPathReq) returns (LuaResult);
+  rpc IsReadOnly(FsPathReq) returns (LuaResult);
+  rpc GetSize   (FsPathReq) returns (LuaResult);
+  rpc GetFreeSpace (FsPathReq) returns (LuaResult);
+  rpc MakeDir   (FsPathReq) returns (LuaResult);
+  rpc Move      (FsCopyMoveReq) returns (LuaResult);
+  rpc Copy      (FsCopyMoveReq) returns (LuaResult);
+  rpc Delete    (FsPathReq) returns (LuaResult);
+  rpc ReadFile  (FsPathReq) returns (FsBlob);
+  rpc WriteFile (FsWriteReq) returns (LuaResult);
+  rpc AppendFile(FsWriteReq) returns (LuaResult);
+  rpc Find      (FsFindReq) returns (LuaResult);
+  rpc Attributes(FsPathReq) returns (LuaResult);
+}
+
+message FsPathReq { DeviceTarget target = 1; string path = 2; }
+message FsCopyMoveReq { DeviceTarget target = 1; string from = 2; string to = 3; }
+message FsBlob { bool ok = 1; bytes data = 2; string error = 3; }
+message FsWriteReq { DeviceTarget target = 1; string path = 2; bytes data = 3; }
+message FsFindReq { DeviceTarget target = 1; string pattern = 2; }
+
+// -----------------------------------------------------------------------------
+// redstone
+// -----------------------------------------------------------------------------
+
+service Redstone {
+  rpc GetSides         (TurtleNoArgs) returns (LuaResult);
+  rpc SetOutput        (RedstoneSetReq) returns (LuaResult);
+  rpc GetOutput        (RedstoneSideReq) returns (LuaResult);
+  rpc GetInput         (RedstoneSideReq) returns (LuaResult);
+  rpc SetAnalogOutput  (RedstoneAnalogReq) returns (LuaResult);
+  rpc GetAnalogOutput  (RedstoneSideReq) returns (LuaResult);
+  rpc GetAnalogInput   (RedstoneSideReq) returns (LuaResult);
+  rpc SetBundledOutput (RedstoneBundledReq) returns (LuaResult);
+  rpc GetBundledOutput (RedstoneSideReq) returns (LuaResult);
+  rpc GetBundledInput  (RedstoneSideReq) returns (LuaResult);
+  rpc TestBundledInput (RedstoneTestBundledReq) returns (LuaResult);
+}
+
+message RedstoneSideReq    { DeviceTarget target = 1; string side = 2; }
+message RedstoneSetReq     { DeviceTarget target = 1; string side = 2; bool on = 3; }
+message RedstoneAnalogReq  { DeviceTarget target = 1; string side = 2; uint32 value = 3; }
+message RedstoneBundledReq { DeviceTarget target = 1; string side = 2; uint32 colors = 3; }
+message RedstoneTestBundledReq { DeviceTarget target = 1; string side = 2; uint32 color = 3; }
+
+// -----------------------------------------------------------------------------
+// term
+// -----------------------------------------------------------------------------
+
+service Term {
+  rpc Write       (TermWriteReq) returns (LuaResult);
+  rpc Blit        (TermBlitReq)  returns (LuaResult);
+  rpc Clear       (TurtleNoArgs) returns (LuaResult);
+  rpc ClearLine   (TurtleNoArgs) returns (LuaResult);
+  rpc GetCursorPos(TurtleNoArgs) returns (LuaResult);
+  rpc SetCursorPos(TermPosReq)   returns (LuaResult);
+  rpc GetCursorBlink (TurtleNoArgs) returns (LuaResult);
+  rpc SetCursorBlink (TermBoolReq) returns (LuaResult);
+  rpc IsColor     (TurtleNoArgs) returns (LuaResult);
+  rpc GetSize     (TurtleNoArgs) returns (LuaResult);
+  rpc Scroll      (TermScrollReq) returns (LuaResult);
+  rpc SetTextColor(TermColorReq) returns (LuaResult);
+  rpc SetBackgroundColor (TermColorReq) returns (LuaResult);
+  rpc SetPaletteColor (TermPaletteReq) returns (LuaResult);
+  rpc GetPaletteColor (TermColorReq) returns (LuaResult);
+}
+
+message TermWriteReq { DeviceTarget target = 1; string text = 2; }
+message TermBlitReq  { DeviceTarget target = 1; string text = 2; string text_color = 3; string bg_color = 4; }
+message TermPosReq   { DeviceTarget target = 1; uint32 x = 2; uint32 y = 3; }
+message TermBoolReq  { DeviceTarget target = 1; bool value = 2; }
+message TermScrollReq { DeviceTarget target = 1; int32 lines = 2; }
+message TermColorReq { DeviceTarget target = 1; uint32 color = 2; }
+message TermPaletteReq { DeviceTarget target = 1; uint32 color = 2; double r = 3; double g = 4; double b = 5; }
+
+// -----------------------------------------------------------------------------
+// gps
+// -----------------------------------------------------------------------------
+
+service Gps {
+  rpc Locate (GpsLocateReq) returns (LuaResult);  // returns table {x,y,z}
+}
+message GpsLocateReq { DeviceTarget target = 1; uint32 timeout_ms = 2; bool debug = 3; }
+
+// -----------------------------------------------------------------------------
+// http (CC's local http API — НЕ путать с шлюзом)
+// -----------------------------------------------------------------------------
+
+service Http {
+  rpc Get        (HttpGetReq)  returns (HttpResp);
+  rpc Post       (HttpPostReq) returns (HttpResp);
+  rpc Request    (HttpRequestReq) returns (HttpResp);
+  rpc CheckUrl   (HttpUrlReq)  returns (LuaResult);
+  rpc WebsocketSend (HttpWsSendReq) returns (LuaResult);  // через open-сессию
+}
+message HttpGetReq  { DeviceTarget target = 1; string url = 2; map<string,string> headers = 3; }
+message HttpPostReq { DeviceTarget target = 1; string url = 2; bytes body = 3; map<string,string> headers = 4; }
+message HttpRequestReq {
+  DeviceTarget target = 1;
+  string url = 2;
+  string method = 3;
+  bytes body = 4;
+  map<string,string> headers = 5;
+  bool binary = 6;
+}
+message HttpUrlReq { DeviceTarget target = 1; string url = 2; }
+message HttpResp {
+  bool ok = 1;
+  uint32 code = 2;
+  bytes body = 3;
+  map<string,string> headers = 4;
+  string error = 5;
+}
+message HttpWsSendReq { DeviceTarget target = 1; string handle = 2; bytes data = 3; bool binary = 4; }
+
+// -----------------------------------------------------------------------------
+// rednet (поверх modem)
+// -----------------------------------------------------------------------------
+
+service Rednet {
+  rpc Open       (RednetSideReq) returns (LuaResult);
+  rpc Close      (RednetSideReq) returns (LuaResult);
+  rpc IsOpen     (RednetSideReq) returns (LuaResult);
+  rpc Send       (RednetSendReq) returns (LuaResult);
+  rpc Broadcast  (RednetBroadcastReq) returns (LuaResult);
+  rpc Host       (RednetHostReq) returns (LuaResult);
+  rpc Unhost     (RednetHostReq) returns (LuaResult);
+  rpc Lookup     (RednetLookupReq) returns (LuaResult);
+}
+message RednetSideReq      { DeviceTarget target = 1; string side = 2; }
+message RednetSendReq      { DeviceTarget target = 1; uint64 recipient = 2; LuaValue message = 3; string protocol = 4; }
+message RednetBroadcastReq { DeviceTarget target = 1; LuaValue message = 2; string protocol = 3; }
+message RednetHostReq      { DeviceTarget target = 1; string protocol = 2; string hostname = 3; }
+message RednetLookupReq    { DeviceTarget target = 1; string protocol = 2; string hostname = 3; }
+
+// -----------------------------------------------------------------------------
+// os
+// -----------------------------------------------------------------------------
+
+service Os {
+  rpc GetComputerID    (TurtleNoArgs) returns (LuaResult);
+  rpc GetComputerLabel (TurtleNoArgs) returns (LuaResult);
+  rpc SetComputerLabel (OsLabelReq) returns (LuaResult);
+  rpc Time             (OsTimeReq)  returns (LuaResult);
+  rpc Day              (OsTimeReq)  returns (LuaResult);
+  rpc Epoch            (OsTimeReq)  returns (LuaResult);
+  rpc Clock            (TurtleNoArgs) returns (LuaResult);
+  rpc Reboot           (TurtleNoArgs) returns (LuaResult);
+  rpc Shutdown         (TurtleNoArgs) returns (LuaResult);
+  rpc Version          (TurtleNoArgs) returns (LuaResult);
+}
+message OsLabelReq { DeviceTarget target = 1; string label = 2; }
+message OsTimeReq  { DeviceTarget target = 1; string locale = 2; }   // "ingame"|"utc"|"local"
+
+// -----------------------------------------------------------------------------
+// commands (только для Command Computers)
+// -----------------------------------------------------------------------------
+
+service Commands {
+  rpc Exec      (CommandExecReq) returns (CommandResp);
+  rpc List      (CommandListReq) returns (LuaResult);
+  rpc GetBlockPosition (TurtleNoArgs) returns (LuaResult);
+}
+message CommandExecReq { DeviceTarget target = 1; string command = 2; }
+message CommandResp { bool ok = 1; repeated string output = 2; string error = 3; }
+message CommandListReq { DeviceTarget target = 1; }
+
+// -----------------------------------------------------------------------------
+// Events: bidi-стрим — клиент подписывается, шлюз шлёт всё, что прилетает
+// в os.pullEventRaw на устройстве.
+// -----------------------------------------------------------------------------
+
+service Events {
+  // Server-streaming: получать события указанных типов с устройства.
+  // Пустой filter == все события.
+  rpc Subscribe (SubscribeReq) returns (stream OsEvent);
+
+  // Программно «дёрнуть» os.queueEvent на устройстве (для тестов и
+  // межклиентских сигналов).
+  rpc Queue (QueueEventReq) returns (LuaResult);
+}
+
+message SubscribeReq {
+  DeviceTarget target = 1;
+  repeated string event_types = 2;   // ["key", "monitor_touch", "modem_message"]
+}
+
+message QueueEventReq {
+  DeviceTarget target = 1;
+  string event = 2;
+  repeated LuaValue args = 3;
+}
+
+message OsEvent {
+  string device_id = 1;
+  string world_id  = 2;
+  int64  ts_ms     = 3;
+  string event     = 4;              // "key" | "char" | "monitor_touch" | ...
+  repeated LuaValue args = 5;
+}
+
+// -----------------------------------------------------------------------------
+// Display: высокоуровневая отрисовка — то «лишнее, что мы оставляем».
+// Все эти методы шлюз транслирует в monitor.* / term.* вызовы.
+// -----------------------------------------------------------------------------
+
+service Display {
+  rpc Text     (DisplayTextReq)    returns (LuaResult);
+  rpc Bar      (DisplayBarReq)     returns (LuaResult);   // прогресс/заполненность
+  rpc Chart    (DisplayChartReq)   returns (LuaResult);   // sparkline по точкам
+  rpc Clear    (DisplayClearReq)   returns (LuaResult);
+}
+
+message DisplayClearReq {
+  DeviceTarget target = 1;
+  string monitor = 2;          // peripheral name; пусто == term
+  uint32 bg = 3;               // CC color
+}
+
+message DisplayTextReq {
+  DeviceTarget target = 1;
+  string monitor = 2;
+  uint32 x = 3;
+  uint32 y = 4;
+  string text = 5;
+  uint32 fg = 6;
+  uint32 bg = 7;
+  double scale = 8;            // monitor.setTextScale, 0 → не менять
+}
+
+message DisplayBarReq {
+  DeviceTarget target = 1;
+  string monitor = 2;
+  uint32 x = 3;
+  uint32 y = 4;
+  uint32 width = 5;
+  double fraction = 6;         // 0..1
+  uint32 fill_color = 7;
+  uint32 empty_color = 8;
+  string label = 9;            // optional
+}
+
+message DisplayChartReq {
+  DeviceTarget target = 1;
+  string monitor = 2;
+  uint32 x = 3;
+  uint32 y = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+  repeated double values = 7;
+  uint32 line_color = 8;
+  uint32 bg = 9;
+  double min = 10;             // если min==max → авто
+  double max = 11;
+}

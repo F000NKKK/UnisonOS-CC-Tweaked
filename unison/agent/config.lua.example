@@ -1,0 +1,16 @@
+return {
+    -- WebSocket URL шлюза. Используй ws:// или wss:// (если шлюз за TLS-прокси).
+    gateway_url = "ws://gateway.example.com:9275/",
+
+    -- World id — изоляция между мирами/серверами.
+    world_id = "default",
+
+    -- Опциональный bearer-токен. Должен совпадать с UNISON_AGENT_TOKEN на gateway.
+    token = nil,
+
+    -- Стабильный device_id — по умолчанию ID компьютера. Менять стоит только
+    -- если хочется давать ботам осмысленные имена ("forester_01").
+    device_id = nil,
+
+    version = "agent-0.1",
+}
