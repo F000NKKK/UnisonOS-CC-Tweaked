@@ -1,17 +1,18 @@
 {
   "branch": "master",
   "name": "UnisonOS",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "phase": "transitional-agent",
   "repo": "https://github.com/F000NKKK/UnisonOS-CC-Tweaked",
   "raw_base": "https://raw.githubusercontent.com/F000NKKK/UnisonOS-CC-Tweaked/master",
   "entrypoint": "unison/boot.lua",
-  "notes": "1.0.0 — переход на тонкий gRPC-агент. Старая система упраздняется этим релизом; следующих обновлений через manifest НЕ БУДЕТ — все апдейты приходят через шлюз.",
+  "notes": "1.0.1 — усиленная очистка legacy + дефолтный gateway_url=upm.hush-vp.ru:9275.",
   "roles": {
     "common": [
       "unison/boot.lua",
       "unison/agent/init.lua",
       "unison/agent/display.lua",
+      "unison/agent/config.lua",
       "unison/agent/config.lua.example"
     ],
     "computer": [],
@@ -21,9 +22,10 @@
     "monitor-host": []
   },
   "checksums": {
-    "unison/boot.lua": "a8ddf50a0c64b5a80ce2da4089d4cec12161f66cba749cfc01644ff9ba1f260c",
-    "unison/agent/init.lua": "99b34d9af787c60c2369f3d5559f474154a6638f14409172278281afdb0bb11f",
+    "unison/boot.lua": "e2a5ffab66f00f4c40627e5d9033ebee7b5a86d7a58e486f3b5a6d96291c2d4c",
+    "unison/agent/init.lua": "2f9e25db54837ada05ca020e5bd07e813305c25407ed9bdc03bd91643f4903eb",
     "unison/agent/display.lua": "454b0dcad4bd42a40644e56c877e15e7a271ea49b567f514438a13f945157a5c",
-    "unison/agent/config.lua.example": "ef1bd0e8d22d9d7aff5e2fe60c5e271a832eada3a373e5cc53a589f42dbd5168"
+    "unison/agent/config.lua": "04c8f34e2095ab6429680297845fbd987272cc5737b2337dcfce2520023e092a",
+    "unison/agent/config.lua.example": "ccfa0f2407019eaadc0a265670c327f04a6bd32016253b767c523c5681aff4e9"
   }
 }

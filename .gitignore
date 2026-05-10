@@ -11,3 +11,4 @@ state/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+.claude/

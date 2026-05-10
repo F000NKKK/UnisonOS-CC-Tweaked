@@ -1,6 +1,6 @@
 return {
     -- WebSocket URL шлюза. Используй ws:// или wss:// (если шлюз за TLS-прокси).
-    gateway_url = "ws://gateway.example.com:9275/",
+    gateway_url = "ws://upm.hush-vp.ru:9275/",
 
     -- World id — изоляция между мирами/серверами.
     world_id = "default",

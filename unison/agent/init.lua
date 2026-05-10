@@ -15,6 +15,26 @@
 -- никакого старого unison/lib. Это намеренно: после переходного релиза
 -- большую часть unison/lib мы тоже сносим, но agent должен жить.
 
+-- Защитная самоочистка: если на устройстве остались legacy-каталоги
+-- (hijacker не доработал, миграция оборвалась посередине, etc.) —
+-- сносим их при каждом старте агента. Дёшево: одни fs.exists.
+do
+    local legacy = {
+        "apps","crypto","kernel","lib","logs","net","pm","rpc",
+        "services","services.d","cron.d","shell","ui","state",
+    }
+    for _, name in ipairs(legacy) do
+        local p = "/unison/" .. name
+        if fs.exists(p) then pcall(fs.delete, p) end
+    end
+    for _, p in ipairs({
+        "/unison.staging", "/unison/.version", "/unison/.pending-commit",
+        "/unison/boot.lua", "/unison/config.lua", "/unison/config.lua.example",
+    }) do
+        if fs.exists(p) then pcall(fs.delete, p) end
+    end
+end
+
 local display = dofile("/unison/agent/display.lua")
 
 local CONFIG_PATH = "/unison/agent/config.lua"
