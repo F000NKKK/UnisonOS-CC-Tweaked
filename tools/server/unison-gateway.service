@@ -1,0 +1,18 @@
+[Unit]
+Description=UnisonOS gRPC gateway + dashboard
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/unison/packages/gateway
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=3
+Environment=UNISON_GRPC_ADDR=0.0.0.0:9290
+Environment=UNISON_WS_HOST=0.0.0.0
+Environment=UNISON_WS_PORT=9275
+Environment=UNISON_WEB_HOST=0.0.0.0
+Environment=UNISON_WEB_PORT=9280
+# Environment=UNISON_AGENT_TOKEN_FILE=/etc/unison/agent.token
+
+[Install]
+WantedBy=multi-user.target

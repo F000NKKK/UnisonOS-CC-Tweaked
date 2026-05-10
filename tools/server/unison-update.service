@@ -1,0 +1,8 @@
+[Unit]
+Description=UnisonOS server self-update (git pull + rebuild + restart gateway)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/unison
+ExecStart=/usr/bin/env bash /opt/unison/tools/server/update.sh

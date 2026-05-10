@@ -3,9 +3,11 @@ import { config } from "./config.js";
 import { log } from "./logger.js";
 import { bridge } from "./bridge.js";
 import { registerAll } from "./services.js";
+import { startWeb } from "./web.js";
 
 async function main() {
   bridge.start();
+  startWeb();
 
   const server = new grpc.Server({
     "grpc.max_receive_message_length": 16 * 1024 * 1024,

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run UnisonOS server self-update every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=unison-update.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
